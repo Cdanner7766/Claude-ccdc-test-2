@@ -1,20 +1,38 @@
-# CCDC Practice Range - Ludus Cybersecurity Lab
+# CCDC Practice Range - VULNERABLE TRAINING ENVIRONMENT
 
-A comprehensive cybersecurity practice environment built on [Ludus](https://ludus.cloud) for Collegiate Cyber Defense Competition (CCDC) training. This range simulates a small business network with realistic services, users, and configurations.
+> **WARNING**: This branch contains INTENTIONALLY VULNERABLE configurations for blue team training. DO NOT deploy in production environments!
+
+A cybersecurity practice environment built on [Ludus](https://ludus.cloud) for Collegiate Cyber Defense Competition (CCDC) training. This vulnerable version simulates a compromised corporate network that blue teams must audit, secure, and defend.
+
+## Branch Information
+
+| Branch | Purpose |
+|--------|---------|
+| `main` | Secure baseline configuration |
+| `vulnerable-training-env` | **THIS BRANCH** - Intentionally vulnerable for training |
+
+## Training Documentation
+
+This vulnerable environment includes comprehensive documentation:
+
+| Document | Description |
+|----------|-------------|
+| [VULNERABILITIES.md](docs/VULNERABILITIES.md) | Complete list of all 70+ vulnerabilities with severity ratings and MITRE ATT&CK mapping |
+| [DETECTION.md](docs/DETECTION.md) | Step-by-step instructions for detecting each vulnerability |
+| [REMEDIATION.md](docs/REMEDIATION.md) | Detailed fix instructions for each vulnerability |
+
+---
 
 ## Table of Contents
 
 - [Overview](#overview)
 - [Architecture](#architecture)
+- [Vulnerability Summary](#vulnerability-summary)
 - [Prerequisites](#prerequisites)
 - [Quick Start](#quick-start)
-- [Detailed Deployment](#detailed-deployment)
-- [Network Configuration](#network-configuration)
+- [Training Exercises](#training-exercises)
 - [User Accounts](#user-accounts)
-- [Services](#services)
-- [Training Scenarios](#training-scenarios)
 - [Troubleshooting](#troubleshooting)
-- [Customization](#customization)
 
 ---
 
@@ -22,31 +40,32 @@ A comprehensive cybersecurity practice environment built on [Ludus](https://ludu
 
 ### What is This?
 
-This repository contains a complete Ludus range configuration that deploys a simulated corporate network environment for cybersecurity training. It's designed specifically for community college CCDC teams to practice:
+This repository contains a Ludus range configuration that deploys a **deliberately vulnerable** corporate network environment. It's designed specifically for community college CCDC teams to practice:
 
-- **Blue Team Skills**: Defending systems, hardening configurations, incident response
-- **System Administration**: Managing Windows and Linux servers in a domain environment
-- **Security Monitoring**: Log analysis, event correlation, threat detection
+- **Blue Team Skills**: Finding vulnerabilities, hardening configurations, incident response
+- **Security Auditing**: Learning to identify misconfigurations and security gaps
+- **Remediation**: Practicing how to fix common security issues
+- **Documentation**: Recording findings professionally
 
 ### Design Philosophy
 
-The environment was designed with these principles:
+The vulnerable environment was designed with these principles:
 
-1. **Realistic**: Mimics a typical small business IT infrastructure
-2. **Educational**: Includes intentional learning opportunities (audit logging enabled, sample data)
-3. **Repeatable**: Snapshot and restore capabilities for iterative training
-4. **Scalable**: Easy to expand with additional systems or services
+1. **Realistic Vulnerabilities**: Issues commonly found in real-world environments
+2. **Progressive Difficulty**: Mix of easy-to-find and subtle vulnerabilities
+3. **Educational**: Each vulnerability maps to CIS benchmarks and MITRE ATT&CK
+4. **Documented**: Complete detection and remediation guidance provided
 
 ### What's Included
 
-| System | OS | Role | IP Address |
-|--------|-----|------|------------|
-| DC01 | Windows Server 2019 | Domain Controller + File Server | 10.X.10.10 |
-| WEB01 | Ubuntu 22.04 LTS | Apache Web Server | 10.X.10.20 |
-| DB01 | Debian 12 | MySQL Database Server | 10.X.10.30 |
-| WS01 | Windows 10 Enterprise | Employee Workstation | 10.X.10.50 |
+| System | OS | Role | Vulnerability Categories |
+|--------|-----|------|--------------------------|
+| DC01 | Windows Server 2019 | Domain Controller + File Server | 20+ Windows & AD vulnerabilities |
+| WEB01 | Ubuntu 22.04 LTS | Apache Web Server | 15+ web application vulnerabilities |
+| DB01 | Debian 12 | MySQL Database Server | 13+ database security issues |
+| WS01 | Windows 10 Enterprise | Employee Workstation | 14+ workstation vulnerabilities |
 
-*Note: X = your Ludus range ID number*
+*Note: See [VULNERABILITIES.md](docs/VULNERABILITIES.md) for the complete list*
 
 ---
 
@@ -59,65 +78,60 @@ The environment was designed with these principles:
                                     │                   VLAN 10 - Corporate                    │
                                     │                   10.X.10.0/24                           │
                                     │                                                          │
-┌──────────────┐                    │  ┌─────────────┐        ┌─────────────┐                 │
-│   Internet   │◄───────────────────┤  │    DC01     │        │    WEB01    │                 │
-│              │                    │  │ Win 2019    │        │ Ubuntu 22   │                 │
-└──────────────┘                    │  │ .10.10      │        │ .10.20      │                 │
-       │                            │  │             │        │             │                 │
-       │                            │  │ - AD/DNS    │        │ - Apache    │                 │
-       ▼                            │  │ - File Svc  │        │ - PHP       │                 │
-┌──────────────┐                    │  │ - DHCP      │        │ - SSL/TLS   │                 │
-│   Ludus      │                    │  └─────────────┘        └─────────────┘                 │
-│   Router     │────────────────────┤                                                          │
-│  10.X.10.254 │                    │  ┌─────────────┐        ┌─────────────┐                 │
-└──────────────┘                    │  │    DB01     │        │    WS01     │                 │
-       │                            │  │ Debian 12   │        │ Windows 10  │                 │
-       │                            │  │ .10.30      │        │ .10.50      │                 │
-       ▼                            │  │             │        │             │                 │
-┌──────────────┐                    │  │ - MySQL     │        │ - Domain    │                 │
-│  WireGuard   │                    │  │ - Sample DB │        │   Joined    │                 │
-│    VPN       │                    │  │             │        │ - Sysmon    │                 │
-│ Your Access  │                    │  └─────────────┘        └─────────────┘                 │
-└──────────────┘                    │                                                          │
+                                    │  ┌─────────────────┐    ┌─────────────────┐             │
+                                    │  │      DC01       │    │      WEB01      │             │
+                                    │  │   Win 2019      │    │   Ubuntu 22     │             │
+                                    │  │   .10.10        │    │   .10.20        │             │
+                                    │  │                 │    │                 │             │
+                                    │  │ VULNERABILITIES │    │ VULNERABILITIES │             │
+                                    │  │ - Firewall OFF  │    │ - SQL Injection │             │
+                                    │  │ - Weak GPO      │    │ - Cmd Injection │             │
+                                    │  │ - SMB issues    │    │ - Dir Listing   │             │
+                                    │  │ - Null sessions │    │ - No Firewall   │             │
+                                    │  └─────────────────┘    └─────────────────┘             │
+                                    │                                                          │
+                                    │  ┌─────────────────┐    ┌─────────────────┐             │
+                                    │  │      DB01       │    │      WS01       │             │
+                                    │  │   Debian 12     │    │   Windows 10    │             │
+                                    │  │   .10.30        │    │   .10.50        │             │
+                                    │  │                 │    │                 │             │
+                                    │  │ VULNERABILITIES │    │ VULNERABILITIES │             │
+                                    │  │ - Root remote   │    │ - UAC Disabled  │             │
+                                    │  │ - Weak passwords│    │ - SMBv1 Enabled │             │
+                                    │  │ - Anonymous usr │    │ - Backdoor acct │             │
+                                    │  │ - No Firewall   │    │ - AutoRun ON    │             │
+                                    │  └─────────────────┘    └─────────────────┘             │
+                                    │                                                          │
                                     └─────────────────────────────────────────────────────────┘
 ```
 
-### Domain Structure
+---
 
-```
-blue.lab (Forest Root Domain)
-│
-├── OU=Staff
-│   ├── OU=IT
-│   │   ├── Alex Thompson (itmgr) - Domain Admin
-│   │   ├── Sarah Lee (slee) - Help Desk
-│   │   └── Kevin Wong (kwong) - Developer
-│   │
-│   ├── OU=Sales
-│   │   └── John Smith (jsmith)
-│   │
-│   ├── OU=HR
-│   │   └── Maria Johnson (mjohnson)
-│   │
-│   ├── OU=Finance
-│   │   └── Brian Williams (bwilliams)
-│   │
-│   └── OU=Marketing
-│       └── David Garcia (dgarcia)
-│
-├── Security Groups
-│   ├── IT
-│   ├── Sales
-│   ├── HR
-│   ├── Finance
-│   ├── Marketing
-│   ├── Help Desk
-│   └── Developers
-│
-└── Computers
-    ├── DC01 (Domain Controller)
-    └── WS01 (Workstation)
-```
+## Vulnerability Summary
+
+### By System
+
+| System | Critical | High | Medium | Low | Total |
+|--------|----------|------|--------|-----|-------|
+| DC01 (Windows) | 5 | 8 | 6 | 3 | 22 |
+| File Services | 2 | 4 | 2 | 0 | 8 |
+| WEB01 (Linux) | 3 | 6 | 4 | 2 | 15 |
+| DB01 (Database) | 4 | 5 | 3 | 1 | 13 |
+| WS01 (Workstation) | 3 | 6 | 4 | 1 | 14 |
+| **Total** | **17** | **29** | **19** | **7** | **72** |
+
+### By Category
+
+| Category | Count | Examples |
+|----------|-------|----------|
+| Authentication | 12 | Weak passwords, null sessions, anonymous access |
+| Network Security | 10 | Disabled firewalls, SMB signing off, SMBv1 |
+| Access Control | 9 | Everyone Full Control, excessive privileges |
+| Logging/Monitoring | 8 | Audit policies disabled, no fail2ban |
+| Web Application | 7 | SQL injection, command injection, XSS |
+| Configuration | 14 | UAC disabled, WDigest enabled, weak SSH |
+| Data Protection | 8 | Passwords in plaintext, sensitive data exposed |
+| Persistence | 4 | Scheduled tasks, backdoor accounts |
 
 ---
 
@@ -133,28 +147,16 @@ blue.lab (Forest Root Domain)
 
 ### Software Requirements
 
-1. **Ludus Server** - Installed and configured ([Installation Guide](https://docs.ludus.cloud/docs/quick-start/install-ludus))
+1. **Ludus Server** - Installed and configured
 2. **Ludus CLI** - Installed on your management machine
 3. **WireGuard** - For VPN access to the range
 
 ### Required Templates
 
-The following Ludus templates must be available:
-
 - `win2019-server-x64-template`
 - `win10-22h2-x64-enterprise-template`
 - `ubuntu-22.04-x64-server-template`
 - `debian-12-x64-server-template`
-
-Check available templates:
-```bash
-ludus templates list
-```
-
-Build missing templates:
-```bash
-ludus templates build --all
-```
 
 ---
 
@@ -163,133 +165,138 @@ ludus templates build --all
 ### One-Command Deployment
 
 ```bash
-# Clone this repository
+# Clone this repository and checkout vulnerable branch
 git clone <repository-url>
 cd ccdc-practice-range
+git checkout vulnerable-training-env
 
 # Run full deployment
 ./scripts/deploy.sh full
 ```
 
-### Step-by-Step Quick Start
+### Manual Deployment
 
 ```bash
-# 1. Check prerequisites
-./scripts/deploy.sh check
-
-# 2. Add roles and set configuration
-./scripts/deploy.sh setup
-
-# 3. Deploy the range
-./scripts/deploy.sh deploy
-
-# 4. View connection information
-./scripts/deploy.sh status
-```
-
----
-
-## Detailed Deployment
-
-### Step 1: Verify Prerequisites
-
-```bash
-# Check Ludus CLI is installed
-ludus version
-
-# Check available templates
-ludus templates list
-
-# Check your range status
-ludus range status
-```
-
-### Step 2: Add Ansible Roles
-
-The custom Ansible roles must be added to your Ludus server:
-
-```bash
-# Add all roles from this repository
+# 1. Add Ansible roles
 ludus ansible role add -d ./ansible/roles/ccdc-windows-base
 ludus ansible role add -d ./ansible/roles/ccdc-file-services
 ludus ansible role add -d ./ansible/roles/ccdc-web-server
 ludus ansible role add -d ./ansible/roles/ccdc-database-server
 ludus ansible role add -d ./ansible/roles/ccdc-workstation-config
 
-# Verify roles were added
-ludus ansible role list
-```
-
-### Step 3: Set Range Configuration
-
-```bash
-# Upload the configuration
+# 2. Set range configuration
 ludus range config set -f ludus-config.yml
 
-# Verify configuration
-ludus range config get
-```
-
-### Step 4: Deploy the Range
-
-```bash
-# Start deployment
+# 3. Deploy
 ludus range deploy
 
-# Monitor progress (in another terminal)
+# 4. Monitor progress
 watch ludus range status
 ```
 
 **Expected deployment time: 30-60 minutes**
 
-### Step 5: Verify Deployment
+---
+
+## Training Exercises
+
+### Exercise 1: Security Audit (Beginner)
+
+**Objective**: Identify obvious security misconfigurations
+
+**Tasks**:
+1. Log into each system and document:
+   - Firewall status
+   - Antivirus/Defender status
+   - User accounts and group memberships
+   - Running services
+2. Use [DETECTION.md](docs/DETECTION.md) to verify your findings
+3. Prioritize vulnerabilities by severity
+
+**Time**: 2-3 hours
+
+### Exercise 2: Vulnerability Remediation (Intermediate)
+
+**Objective**: Fix critical and high severity vulnerabilities
+
+**Tasks**:
+1. Review [VULNERABILITIES.md](docs/VULNERABILITIES.md) for the full list
+2. Create a remediation plan prioritized by risk
+3. Use [REMEDIATION.md](docs/REMEDIATION.md) to fix issues
+4. Verify fixes using detection commands
+5. Document all changes made
+
+**Time**: 4-6 hours
+
+### Exercise 3: Hardening Challenge (Advanced)
+
+**Objective**: Secure the environment without breaking services
+
+**Tasks**:
+1. Create snapshots before starting
+2. Implement all security controls
+3. Verify services still function:
+   - Web application accessible
+   - Database queries work
+   - File shares accessible to authorized users
+   - Domain authentication works
+4. Document what broke and how you fixed it
+
+**Time**: Full day
+
+### Exercise 4: Incident Response (Advanced)
+
+**Objective**: Investigate and respond to compromised systems
+
+**Setup**: Instructor deploys range, runs simulated attack, then students investigate
+
+**Tasks**:
+1. Identify indicators of compromise
+2. Determine attack vector
+3. Contain the threat
+4. Eradicate malicious artifacts
+5. Recover services
+6. Write incident report
+
+**Time**: 4-8 hours
+
+### Competition Simulation
+
+**Objective**: Practice CCDC-style defense scenario
+
+**Rules**:
+1. No internet access (test mode)
+2. 4-hour time limit
+3. Score based on:
+   - Services uptime (50%)
+   - Vulnerabilities fixed (30%)
+   - Incident response (20%)
 
 ```bash
-# Check all VMs are running
-ludus range status
+# Start competition mode (creates snapshot, blocks internet)
+./scripts/deploy.sh test
 
-# Get WireGuard configuration
-ludus user wireguard
-
-# Test connectivity (after connecting to VPN)
-ping 10.X.10.10  # DC01
-ping 10.X.10.20  # WEB01
+# After competition, reset
+./scripts/deploy.sh untest
 ```
 
 ---
 
-## Network Configuration
-
-### IP Addressing
-
-All VMs are on VLAN 10 with the subnet `10.X.10.0/24` where X is your range ID.
-
-| Hostname | IP Address | Services/Ports |
-|----------|------------|----------------|
-| DC01 | 10.X.10.10 | DNS (53), LDAP (389), Kerberos (88), SMB (445), WinRM (5985) |
-| WEB01 | 10.X.10.20 | HTTP (80), HTTPS (443), SSH (22) |
-| DB01 | 10.X.10.30 | MySQL (3306), SSH (22) |
-| WS01 | 10.X.10.50 | RDP (3389), WinRM (5985) |
-| Router | 10.X.10.254 | Gateway, DNS forwarding |
-
-### DNS Configuration
-
-- Primary DNS: DC01 (10.X.10.10)
-- The domain `blue.lab` resolves all internal hostnames
-- External DNS queries are forwarded through the Ludus router
-
-### Firewall Rules
-
-Default policies allow internal VLAN traffic. Key rules:
-
-- All internal traffic within VLAN 10 is allowed
-- Web server (port 80/443) accessible from all internal hosts
-- Database (port 3306) only accessible from web server
-- Internet access enabled for updates (can be disabled for exercises)
-
----
-
 ## User Accounts
+
+### Vulnerable Credentials (Intentionally Weak)
+
+These accounts have weak passwords for training purposes:
+
+| Account | Password | Location | Vulnerability |
+|---------|----------|----------|---------------|
+| BLUE\svc_backup | admin | Domain | V-WIN-EXTRA |
+| BLUE\helpdesk | HelpDesk1 | Domain | V-WIN-EXTRA |
+| backdoor | admin | WS01 Local | V-WS-006 |
+| support | support | WS01 Local | V-WS-006 |
+| root (MySQL) | root | DB01 | V-DB-001 |
+| webapp | webapp | DB01 MySQL | V-DB-008 |
+| admin | admin | DB01 MySQL | V-DB-009 |
 
 ### Domain Administrator
 
@@ -299,160 +306,62 @@ Default policies allow internal VLAN traffic. Key rules:
 
 ### Standard Domain Users
 
-| Username | Password | Department | Groups |
-|----------|----------|------------|--------|
-| BLUE\jsmith | JSmith2024! | Sales | Domain Users, Sales |
-| BLUE\mjohnson | MJohnson2024! | HR | Domain Users, HR |
-| BLUE\bwilliams | BWilliams2024! | Finance | Domain Users, Finance |
-| BLUE\slee | SLee2024! | IT | Domain Users, IT, Help Desk |
-| BLUE\dgarcia | DGarcia2024! | Marketing | Domain Users, Marketing |
-| BLUE\kwong | KWong2024! | IT | Domain Users, IT, Developers |
+| Username | Password | Department |
+|----------|----------|------------|
+| BLUE\jsmith | JSmith2024! | Sales |
+| BLUE\mjohnson | MJohnson2024! | HR |
+| BLUE\bwilliams | BWilliams2024! | Finance |
+| BLUE\slee | SLee2024! | IT |
+| BLUE\dgarcia | DGarcia2024! | Marketing |
+| BLUE\kwong | KWong2024! | IT |
 
-### Local Accounts (All Systems)
+### Local System Access
 
 | Username | Password | Notes |
 |----------|----------|-------|
-| localuser | password | Ludus default local admin |
-| Administrator | CCDCAdmin2024! | Windows built-in (DC only) |
-
-### Database Users
-
-| Username | Password | Database | Privileges |
-|----------|----------|----------|------------|
-| webapp | WebApp2024! | inventory | SELECT, INSERT, UPDATE, DELETE |
-| hrapp | HRApp2024! | employees | SELECT, INSERT, UPDATE |
+| localuser | password | Ludus default |
+| Administrator | CCDCAdmin2024! | Windows built-in |
+| adminuser | AdminUser2024! | Linux servers |
 
 ---
 
-## Services
+## Scoring Checklist
 
-### Domain Controller (DC01)
+Use this checklist during exercises to track progress:
 
-**Active Directory Domain Services**
-- Domain: blue.lab
-- Forest/Domain Functional Level: Windows Server 2016
-- DNS integrated with AD
+### Critical Fixes (Must Complete)
+- [ ] Enable Windows Firewall on all Windows systems
+- [ ] Enable Windows Defender
+- [ ] Remove/secure backdoor accounts
+- [ ] Fix SQL injection vulnerability
+- [ ] Fix command injection vulnerability
+- [ ] Secure MySQL root access
+- [ ] Enable UFW on Linux systems
 
-**File Services**
-- Share: `\\DC01\SharedFiles` (mapped as S: drive on workstations)
-- Departmental folders with appropriate permissions
-- Public folder for general file sharing
+### High Priority Fixes
+- [ ] Enable audit policies
+- [ ] Enable SMB signing
+- [ ] Disable SMBv1
+- [ ] Enable UAC
+- [ ] Configure account lockout
+- [ ] Remove anonymous MySQL user
+- [ ] Secure SSH configuration
+- [ ] Fix weak passwords
 
-**Security Configuration**
-- Advanced audit policies enabled
-- PowerShell script block logging
-- DNS query logging
-- Command-line process auditing
+### Medium Priority Fixes
+- [ ] Enable PowerShell logging
+- [ ] Disable WDigest
+- [ ] Configure NLA for RDP
+- [ ] Remove sensitive files from shares
+- [ ] Disable directory listing
+- [ ] Remove phpinfo.php
+- [ ] Configure fail2ban
 
-### Web Server (WEB01)
-
-**Apache HTTP Server**
-- Document root: `/var/www/html`
-- SSL enabled with self-signed certificate
-- Sample corporate intranet site deployed
-
-**Security**
-- UFW firewall (ports 22, 80, 443)
-- Fail2ban for brute force protection
-- ModSecurity WAF installed
-
-**Access**
-- URL: https://intranet.blue.lab (or https://10.X.10.20)
-- SSH: `ssh localuser@10.X.10.20`
-
-### Database Server (DB01)
-
-**MySQL/MariaDB**
-- Port: 3306
-- Databases: inventory, employees, helpdesk
-
-**Sample Data Included**
-- Product inventory system
-- Employee records
-- IT helpdesk tickets
-
-**Security**
-- UFW firewall (ports 22, 3306)
-- MySQL connections restricted to internal network
-- Root remote login disabled
-
-**Access**
-- MySQL: `mysql -h 10.X.10.30 -u webapp -p inventory`
-- SSH: `ssh localuser@10.X.10.30`
-
-### Workstation (WS01)
-
-**Windows 10 Enterprise**
-- Domain joined to blue.lab
-- Sysmon installed for endpoint monitoring
-- Network drive mapped to file share
-
-**Security**
-- Windows Defender enabled
-- Audit policies configured
-- PowerShell logging enabled
-
-**Access**
-- RDP: `mstsc /v:10.X.10.50`
-- Login as any domain user
-
----
-
-## Training Scenarios
-
-### Getting Started Exercises
-
-1. **Explore the Network**
-   - Log into WS01 as a domain user
-   - Browse the file share on DC01
-   - Access the intranet website
-   - Query the database from the web server
-
-2. **Review Security Configurations**
-   - Examine Windows audit policies on DC01
-   - Review Apache security headers on WEB01
-   - Check MySQL user permissions on DB01
-
-### Blue Team Exercises
-
-1. **Baseline Documentation**
-   - Document all running services
-   - List all user accounts and group memberships
-   - Map network connections between systems
-
-2. **Hardening Exercise**
-   - Review and improve firewall rules
-   - Disable unnecessary services
-   - Implement additional logging
-
-3. **Incident Response Preparation**
-   - Configure centralized logging
-   - Create monitoring dashboards
-   - Develop incident response procedures
-
-### Using Testing Mode
-
-Testing mode creates snapshots and blocks internet access to simulate competition conditions:
-
-```bash
-# Start a training exercise
-./scripts/deploy.sh test
-
-# Conduct your exercise...
-
-# Reset to clean state
-./scripts/deploy.sh untest
-```
-
-### Snapshot Management
-
-```bash
-# Create named snapshot before exercise
-./scripts/deploy.sh snapshot pre-exercise
-
-# After exercise, restore to clean state
-./scripts/deploy.sh restore pre-exercise
-```
+### Bonus Points
+- [ ] Install and configure Sysmon
+- [ ] Set up centralized logging
+- [ ] Create security monitoring dashboards
+- [ ] Document all changes
 
 ---
 
@@ -460,44 +369,26 @@ Testing mode creates snapshots and blocks internet access to simulate competitio
 
 ### Common Issues
 
-**VMs not deploying**
+**Deployment fails with template errors**
 ```bash
-# Check template status
 ludus templates list
-
-# Build missing templates
-ludus templates build -n <template-name>
+ludus templates build -n <missing-template>
 ```
 
 **Cannot connect to VMs**
 ```bash
-# Verify WireGuard is connected
+# Check WireGuard
 wg show
 
-# Check VM status
+# Verify VM status
 ludus range status
-
-# Verify your range ID and IP addresses
-ludus range config get | grep range_id
 ```
 
-**Domain join failures**
-```bash
-# Check DC is running first
-ludus range status
-
-# Redeploy domain configuration
-ludus range deploy -t ad-dc
-```
-
-**Ansible role failures**
-```bash
-# Check role logs
-ludus range logs
-
-# Redeploy specific role
-ludus range deploy -t user-defined-roles --limit <hostname>
-```
+**Services don't work after fixing vulnerabilities**
+- Create snapshots before making changes
+- Test each change individually
+- Check service logs for errors
+- Refer to [REMEDIATION.md](docs/REMEDIATION.md) for safe fixes
 
 ### Useful Commands
 
@@ -506,98 +397,10 @@ ludus range deploy -t user-defined-roles --limit <hostname>
 ludus range logs
 
 # SSH to Linux VM
-ludus range ssh <vm-name>
+ludus range ssh WEB01
 
-# Open RDP to Windows VM
-ludus range rdp <vm-name>
-
-# Get Ansible inventory
-ludus range inventory
-
-# Force redeploy specific VM
-ludus range deploy --limit <vm-name>
-```
-
----
-
-## Customization
-
-### Adding More VMs
-
-Edit `ludus-config.yml` to add additional systems:
-
-```yaml
-ludus:
-  # ... existing VMs ...
-
-  - vm_name: "{{ range_id }}-new-server"
-    hostname: "NEWSRV01"
-    template: ubuntu-22.04-x64-server-template
-    vlan: 10
-    ip_last_octet: 40
-    ram_gb: 4
-    cpus: 2
-    linux: true
-```
-
-### Adding Users
-
-Add users to the `global_role_vars.domain_users` list in `ludus-config.yml`:
-
-```yaml
-global_role_vars:
-  domain_users:
-    # ... existing users ...
-    - username: "newuser"
-      password: "NewUser2024!"
-      first_name: "New"
-      last_name: "User"
-      display_name: "New User"
-      description: "New Employee"
-      groups:
-        - "Domain Users"
-        - "Sales"
-      ou: "OU=Sales,OU=Staff,DC=blue,DC=lab"
-```
-
-### Modifying Network Rules
-
-Edit the `network` section in `ludus-config.yml`:
-
-```yaml
-network:
-  inter_vlan_default: REJECT  # More restrictive
-  rules:
-    - name: "Custom rule"
-      vlan_src: 10
-      ip_last_octet_src: 50
-      vlan_dst: 10
-      ip_last_octet_dst: 30
-      protocol: tcp
-      ports: 3306
-      action: ACCEPT
-```
-
-### Creating Custom Ansible Roles
-
-1. Create role structure:
-```bash
-mkdir -p ansible/roles/my-custom-role/{tasks,handlers,templates,files,vars,defaults,meta}
-```
-
-2. Add tasks in `tasks/main.yml`
-
-3. Add to Ludus:
-```bash
-ludus ansible role add -d ./ansible/roles/my-custom-role
-```
-
-4. Reference in VM configuration:
-```yaml
-- vm_name: "{{ range_id }}-myvm"
-  # ...
-  roles:
-    - my-custom-role
+# Reset to clean state
+./scripts/deploy.sh restore pre-exercise
 ```
 
 ---
@@ -606,45 +409,49 @@ ludus ansible role add -d ./ansible/roles/my-custom-role
 
 ```
 ccdc-practice-range/
-├── ludus-config.yml           # Main Ludus range configuration
-├── README.md                  # This documentation
+├── ludus-config.yml              # Main Ludus configuration
+├── README.md                     # This file
+├── docs/
+│   ├── VULNERABILITIES.md        # Complete vulnerability list
+│   ├── DETECTION.md              # How to find vulnerabilities
+│   └── REMEDIATION.md            # How to fix vulnerabilities
 ├── ansible/
 │   └── roles/
-│       ├── ccdc-windows-base/       # Windows baseline security
-│       ├── ccdc-file-services/      # Windows file sharing
-│       ├── ccdc-web-server/         # Linux Apache web server
-│       ├── ccdc-database-server/    # Linux MySQL database
-│       └── ccdc-workstation-config/ # Windows 10 workstation
+│       ├── ccdc-windows-base/    # Windows vulnerabilities
+│       ├── ccdc-file-services/   # File share vulnerabilities
+│       ├── ccdc-web-server/      # Web app vulnerabilities
+│       ├── ccdc-database-server/ # Database vulnerabilities
+│       └── ccdc-workstation-config/ # Workstation vulnerabilities
 └── scripts/
-    └── deploy.sh              # Deployment automation script
+    └── deploy.sh                 # Deployment automation
 ```
 
 ---
 
-## Support
-
-### Resources
+## Resources
 
 - [Ludus Documentation](https://docs.ludus.cloud)
-- [Ludus GitHub](https://github.com/badsectorlabs/ludus)
-- [Ansible Documentation](https://docs.ansible.com)
-
-### Getting Help
-
-1. Check the [Troubleshooting](#troubleshooting) section
-2. Review Ludus logs: `ludus range logs`
-3. Join the [Ludus Discord](https://discord.gg/ludus)
+- [CIS Benchmarks](https://www.cisecurity.org/cis-benchmarks)
+- [MITRE ATT&CK](https://attack.mitre.org)
+- [OWASP Top 10](https://owasp.org/www-project-top-ten/)
 
 ---
 
-## License
+## Disclaimer
 
-This project is provided for educational purposes. See individual component licenses for details.
+This vulnerable environment is provided for **educational purposes only**. The vulnerabilities are intentional and designed to teach security concepts.
+
+**DO NOT**:
+- Deploy in production environments
+- Use techniques learned here maliciously
+- Leave the environment running unattended
+
+**ALWAYS**:
+- Operate within your authorized scope
+- Follow your institution's acceptable use policies
+- Practice responsible disclosure
 
 ---
 
-## Acknowledgments
-
-- [Ludus](https://ludus.cloud) by Bad Sector Labs
-- Community college cybersecurity programs
-- CCDC competition organizers
+*CCDC Practice Range - Vulnerable Training Environment*
+*Blue Team Industries*

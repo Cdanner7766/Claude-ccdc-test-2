@@ -1,140 +1,135 @@
 ---
 # =============================================================================
-# CCDC Windows Base Configuration Role
-# Configures baseline security and creates AD organizational structure
+# CCDC Windows Base Configuration Role - VULNERABLE VERSION
 # =============================================================================
-# This role is designed for Windows Server domain controllers and applies:
-# - Basic security hardening
-# - Audit policy configuration
-# - Organizational Unit creation
-# - Security Group creation
-# - Domain User creation
+# WARNING: This role INTENTIONALLY introduces security vulnerabilities
+# for blue team training purposes. DO NOT use in production!
+#
+# Vulnerabilities introduced:
+# - V-WIN-001: Windows Firewall disabled
+# - V-WIN-002: Windows Defender disabled
+# - V-WIN-003: Audit policies disabled
+# - V-WIN-004: PowerShell logging disabled
+# - V-WIN-005: Guest account enabled
+# - V-WIN-006: Weak password policy
+# - V-WIN-007: No account lockout policy
+# - V-WIN-008: LLMNR enabled (default)
+# - V-WIN-009: NBT-NS enabled (default)
+# - V-WIN-010: SMB signing disabled
+# - V-WIN-011: Anonymous LDAP binding enabled
+# - V-WIN-012: Print Spooler service running
+# - V-WIN-013: WDigest authentication enabled
+# - V-WIN-014: Reversible encryption enabled
+# - V-WIN-015: LM hash storage enabled
+# - V-WIN-016: Null session access enabled
+# - V-WIN-017: Remote Registry service enabled
+# - V-WIN-018: AutoPlay enabled
+# - V-WIN-019: LSASS not protected
+# - V-WIN-020: Credential caching excessive
 # =============================================================================
 
 - name: Display role information
   ansible.builtin.debug:
-    msg: "Configuring Windows base settings for {{ inventory_hostname }}"
+    msg: "Configuring VULNERABLE Windows settings for {{ inventory_hostname }}"
 
 # =============================================================================
-# Security Hardening
+# V-WIN-001: Disable Windows Firewall
 # =============================================================================
-- name: Configure Windows Firewall - Enable for all profiles
+- name: "VULN V-WIN-001: Disable Windows Firewall for all profiles"
   community.windows.win_firewall:
-    state: enabled
+    state: disabled
     profiles:
       - Domain
       - Private
       - Public
-  tags: [security, firewall]
+  tags: [vulnerability, firewall]
 
-- name: Enable Windows Defender Real-Time Protection
+# =============================================================================
+# V-WIN-002: Disable Windows Defender
+# =============================================================================
+- name: "VULN V-WIN-002: Disable Windows Defender Real-Time Protection"
   ansible.windows.win_powershell:
     script: |
-      Set-MpPreference -DisableRealtimeMonitoring $false
-      Set-MpPreference -DisableBehaviorMonitoring $false
-      Set-MpPreference -DisableBlockAtFirstSeen $false
-      Set-MpPreference -DisableIOAVProtection $false
+      Set-MpPreference -DisableRealtimeMonitoring $true
+      Set-MpPreference -DisableBehaviorMonitoring $true
+      Set-MpPreference -DisableBlockAtFirstSeen $true
+      Set-MpPreference -DisableIOAVProtection $true
+      Set-MpPreference -DisableScriptScanning $true
+      Write-Output "Windows Defender disabled"
   ignore_errors: true
-  tags: [security, defender]
+  tags: [vulnerability, defender]
 
 # =============================================================================
-# Audit Policy Configuration (for Blue Team training)
+# V-WIN-003: Disable Audit Policies
 # =============================================================================
-- name: Configure Advanced Audit Policies
+- name: "VULN V-WIN-003: Disable all audit policies"
   ansible.windows.win_powershell:
     script: |
-      # Account Logon Events
-      auditpol /set /subcategory:"Credential Validation" /success:enable /failure:enable
-      auditpol /set /subcategory:"Kerberos Authentication Service" /success:enable /failure:enable
-      auditpol /set /subcategory:"Kerberos Service Ticket Operations" /success:enable /failure:enable
+      # Disable all audit categories
+      auditpol /set /subcategory:"Credential Validation" /success:disable /failure:disable
+      auditpol /set /subcategory:"Kerberos Authentication Service" /success:disable /failure:disable
+      auditpol /set /subcategory:"Kerberos Service Ticket Operations" /success:disable /failure:disable
+      auditpol /set /subcategory:"User Account Management" /success:disable /failure:disable
+      auditpol /set /subcategory:"Computer Account Management" /success:disable /failure:disable
+      auditpol /set /subcategory:"Security Group Management" /success:disable /failure:disable
+      auditpol /set /subcategory:"Logon" /success:disable /failure:disable
+      auditpol /set /subcategory:"Logoff" /success:disable /failure:disable
+      auditpol /set /subcategory:"Special Logon" /success:disable /failure:disable
+      auditpol /set /subcategory:"File System" /success:disable /failure:disable
+      auditpol /set /subcategory:"Registry" /success:disable /failure:disable
+      auditpol /set /subcategory:"File Share" /success:disable /failure:disable
+      auditpol /set /subcategory:"Process Creation" /success:disable /failure:disable
+      Write-Output "Audit policies disabled"
+  tags: [vulnerability, audit]
 
-      # Account Management
-      auditpol /set /subcategory:"User Account Management" /success:enable /failure:enable
-      auditpol /set /subcategory:"Computer Account Management" /success:enable /failure:enable
-      auditpol /set /subcategory:"Security Group Management" /success:enable /failure:enable
-
-      # Logon/Logoff Events
-      auditpol /set /subcategory:"Logon" /success:enable /failure:enable
-      auditpol /set /subcategory:"Logoff" /success:enable
-      auditpol /set /subcategory:"Special Logon" /success:enable
-
-      # Object Access
-      auditpol /set /subcategory:"File System" /success:enable /failure:enable
-      auditpol /set /subcategory:"Registry" /success:enable /failure:enable
-      auditpol /set /subcategory:"File Share" /success:enable /failure:enable
-
-      # Policy Change
-      auditpol /set /subcategory:"Audit Policy Change" /success:enable /failure:enable
-      auditpol /set /subcategory:"Authentication Policy Change" /success:enable
-
-      # Privilege Use
-      auditpol /set /subcategory:"Sensitive Privilege Use" /success:enable /failure:enable
-
-      # Process Tracking
-      auditpol /set /subcategory:"Process Creation" /success:enable /failure:enable
-
-      # System Events
-      auditpol /set /subcategory:"Security State Change" /success:enable /failure:enable
-      auditpol /set /subcategory:"Security System Extension" /success:enable /failure:enable
-
-      Write-Output "Audit policies configured successfully"
-  when: enable_audit_policies | default(true)
-  tags: [security, audit]
-
-- name: Enable command line logging in process creation events
+# =============================================================================
+# V-WIN-004: Disable PowerShell Logging
+# =============================================================================
+- name: "VULN V-WIN-004: Disable command line logging"
   ansible.windows.win_regedit:
     path: HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Audit
     name: ProcessCreationIncludeCmdLine_Enabled
-    data: 1
+    data: 0
     type: dword
-  tags: [security, audit]
+  tags: [vulnerability, logging]
 
-- name: Enable PowerShell Script Block Logging
+- name: "VULN V-WIN-004: Disable PowerShell Script Block Logging"
   ansible.windows.win_regedit:
     path: HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging
     name: EnableScriptBlockLogging
-    data: 1
+    data: 0
     type: dword
-  tags: [security, audit]
+  tags: [vulnerability, logging]
 
-- name: Enable PowerShell Module Logging
+- name: "VULN V-WIN-004: Disable PowerShell Module Logging"
   ansible.windows.win_regedit:
     path: HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ModuleLogging
     name: EnableModuleLogging
-    data: 1
+    data: 0
     type: dword
-  tags: [security, audit]
+  tags: [vulnerability, logging]
 
 # =============================================================================
-# DNS Logging (Domain Controller Only)
+# V-WIN-005: Enable Guest Account
 # =============================================================================
-- name: Enable DNS Debug Logging
+- name: "VULN V-WIN-005: Enable Guest account"
   ansible.windows.win_powershell:
     script: |
-      # Enable DNS analytical logging
-      Set-DnsServerDiagnostics -All $true
-      Set-DnsServerDiagnostics -EnableLoggingForLocalLookupEvent $true
-      Set-DnsServerDiagnostics -EnableLoggingForPluginDllEvent $true
-      Set-DnsServerDiagnostics -EnableLoggingForRecursiveLookupEvent $true
-      Set-DnsServerDiagnostics -EnableLoggingForRemoteServerEvent $true
-      Set-DnsServerDiagnostics -EnableLoggingForServerStartStopEvent $true
-      Set-DnsServerDiagnostics -EnableLoggingForTombstoneEvent $true
-      Set-DnsServerDiagnostics -EnableLoggingForZoneDataWriteEvent $true
-      Set-DnsServerDiagnostics -EnableLoggingForZoneLoadingEvent $true
-      Write-Output "DNS logging enabled"
-  when: enable_dns_logging | default(false)
+      Enable-LocalUser -Name "Guest"
+      # Set a simple password
+      $password = ConvertTo-SecureString "guest123" -AsPlainText -Force
+      Set-LocalUser -Name "Guest" -Password $password
+      Write-Output "Guest account enabled"
   ignore_errors: true
-  tags: [dns, logging]
+  tags: [vulnerability, accounts]
 
 # =============================================================================
-# Active Directory Organizational Structure
-# Only runs on Domain Controllers
+# V-WIN-006, V-WIN-007: Weak Password Policy (DC Only)
 # =============================================================================
 - name: Check if this is a Domain Controller
   ansible.windows.win_powershell:
     script: |
       $domainController = (Get-WmiObject Win32_ComputerSystem).DomainRole
-      # 4 = Backup DC, 5 = Primary DC
       if ($domainController -ge 4) {
         Write-Output "true"
       } else {
@@ -143,23 +138,203 @@
   register: is_dc
   tags: [ad]
 
+- name: "VULN V-WIN-006/007: Configure weak password policy"
+  ansible.windows.win_powershell:
+    script: |
+      Import-Module ActiveDirectory
+
+      # Set weak password policy
+      Set-ADDefaultDomainPasswordPolicy -Identity "{{ domain_name | default('blue.lab') }}" `
+        -MinPasswordLength 4 `
+        -PasswordHistoryCount 0 `
+        -MaxPasswordAge "365.00:00:00" `
+        -MinPasswordAge "0.00:00:00" `
+        -ComplexityEnabled $false `
+        -ReversibleEncryptionEnabled $true `
+        -LockoutThreshold 0 `
+        -LockoutDuration "00:01:00" `
+        -LockoutObservationWindow "00:01:00"
+
+      Write-Output "Weak password policy configured"
+  when: is_dc.output[0] == "true"
+  ignore_errors: true
+  tags: [vulnerability, password]
+
+# =============================================================================
+# V-WIN-010: Disable SMB Signing
+# =============================================================================
+- name: "VULN V-WIN-010: Disable SMB signing requirement"
+  ansible.windows.win_regedit:
+    path: HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters
+    name: RequireSecuritySignature
+    data: 0
+    type: dword
+  tags: [vulnerability, smb]
+
+- name: "VULN V-WIN-010: Disable SMB signing on client"
+  ansible.windows.win_regedit:
+    path: HKLM:\SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters
+    name: RequireSecuritySignature
+    data: 0
+    type: dword
+  tags: [vulnerability, smb]
+
+# =============================================================================
+# V-WIN-011: Enable Anonymous LDAP Binding (DC Only)
+# =============================================================================
+- name: "VULN V-WIN-011: Enable anonymous LDAP binding"
+  ansible.windows.win_powershell:
+    script: |
+      # Enable anonymous LDAP queries
+      $configDN = (Get-ADRootDSE).configurationNamingContext
+      $directoryServiceDN = "CN=Directory Service,CN=Windows NT,CN=Services,$configDN"
+
+      Set-ADObject -Identity $directoryServiceDN -Add @{
+        'dsHeuristics' = '0000002'
+      } -ErrorAction SilentlyContinue
+
+      # Add anonymous access to domain
+      $domainDN = (Get-ADDomain).DistinguishedName
+      dsacls $domainDN /G "ANONYMOUS LOGON:GR"
+
+      Write-Output "Anonymous LDAP binding enabled"
+  when: is_dc.output[0] == "true"
+  ignore_errors: true
+  tags: [vulnerability, ldap]
+
+# =============================================================================
+# V-WIN-012: Ensure Print Spooler is Running (PrintNightmare risk)
+# =============================================================================
+- name: "VULN V-WIN-012: Enable and start Print Spooler service"
+  ansible.windows.win_service:
+    name: Spooler
+    start_mode: auto
+    state: started
+  tags: [vulnerability, services]
+
+# =============================================================================
+# V-WIN-013: Enable WDigest Authentication (Credential Caching)
+# =============================================================================
+- name: "VULN V-WIN-013: Enable WDigest authentication"
+  ansible.windows.win_regedit:
+    path: HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\WDigest
+    name: UseLogonCredential
+    data: 1
+    type: dword
+  tags: [vulnerability, credentials]
+
+# =============================================================================
+# V-WIN-015: Enable LM Hash Storage
+# =============================================================================
+- name: "VULN V-WIN-015: Enable LM hash storage"
+  ansible.windows.win_regedit:
+    path: HKLM:\SYSTEM\CurrentControlSet\Control\Lsa
+    name: NoLMHash
+    data: 0
+    type: dword
+  tags: [vulnerability, credentials]
+
+# =============================================================================
+# V-WIN-016: Enable Null Session Access
+# =============================================================================
+- name: "VULN V-WIN-016: Enable null session pipes"
+  ansible.windows.win_regedit:
+    path: HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters
+    name: NullSessionPipes
+    data: ["browser", "netlogon", "samr", "srvsvc", "lsarpc"]
+    type: multistring
+  tags: [vulnerability, null_session]
+
+- name: "VULN V-WIN-016: Enable null session shares"
+  ansible.windows.win_regedit:
+    path: HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters
+    name: NullSessionShares
+    data: ["ADMIN$", "C$", "IPC$"]
+    type: multistring
+  tags: [vulnerability, null_session]
+
+- name: "VULN V-WIN-016: Allow anonymous enumeration of SAM accounts"
+  ansible.windows.win_regedit:
+    path: HKLM:\SYSTEM\CurrentControlSet\Control\Lsa
+    name: RestrictAnonymousSAM
+    data: 0
+    type: dword
+  tags: [vulnerability, null_session]
+
+- name: "VULN V-WIN-016: Allow anonymous enumeration of shares"
+  ansible.windows.win_regedit:
+    path: HKLM:\SYSTEM\CurrentControlSet\Control\Lsa
+    name: RestrictAnonymous
+    data: 0
+    type: dword
+  tags: [vulnerability, null_session]
+
+# =============================================================================
+# V-WIN-017: Enable Remote Registry Service
+# =============================================================================
+- name: "VULN V-WIN-017: Enable Remote Registry service"
+  ansible.windows.win_service:
+    name: RemoteRegistry
+    start_mode: auto
+    state: started
+  tags: [vulnerability, services]
+
+# =============================================================================
+# V-WIN-018: Enable AutoPlay/AutoRun
+# =============================================================================
+- name: "VULN V-WIN-018: Enable AutoPlay"
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer
+    name: NoDriveTypeAutoRun
+    data: 0
+    type: dword
+  tags: [vulnerability, autorun]
+
+- name: "VULN V-WIN-018: Enable AutoRun"
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer
+    name: NoAutorun
+    data: 0
+    type: dword
+  tags: [vulnerability, autorun]
+
+# =============================================================================
+# V-WIN-019: Disable LSASS Protection
+# =============================================================================
+- name: "VULN V-WIN-019: Disable LSASS protection"
+  ansible.windows.win_regedit:
+    path: HKLM:\SYSTEM\CurrentControlSet\Control\Lsa
+    name: RunAsPPL
+    data: 0
+    type: dword
+  tags: [vulnerability, lsass]
+
+# =============================================================================
+# V-WIN-020: Enable Excessive Credential Caching
+# =============================================================================
+- name: "VULN V-WIN-020: Set excessive cached credentials"
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon
+    name: CachedLogonsCount
+    data: "50"
+    type: string
+  tags: [vulnerability, credentials]
+
+# =============================================================================
+# Create Organizational Units (same as secure version)
+# =============================================================================
 - name: Create Organizational Units
   ansible.windows.win_powershell:
     script: |
       $ouPath = "{{ item }}"
-
-      # Parse the OU path to get the name and parent
       if ($ouPath -match "^OU=([^,]+),(.+)$") {
         $ouName = $Matches[1]
         $parentPath = $Matches[2]
-
-        # Check if OU already exists
         try {
           $existingOU = Get-ADOrganizationalUnit -Filter "DistinguishedName -eq '$ouPath'" -ErrorAction Stop
           Write-Output "OU '$ouName' already exists"
         }
         catch {
-          # Create the OU
           try {
             New-ADOrganizationalUnit -Name $ouName -Path $parentPath -ProtectedFromAccidentalDeletion $false
             Write-Output "Created OU: $ouName"
@@ -174,20 +349,20 @@
   ignore_errors: true
   tags: [ad, ou]
 
+# =============================================================================
+# Create Security Groups (same as secure version)
+# =============================================================================
 - name: Create Security Groups
   ansible.windows.win_powershell:
     script: |
       $groupName = "{{ item.name }}"
       $description = "{{ item.description | default('') }}"
       $ouPath = "{{ item.ou }}"
-
-      # Check if group exists
       try {
         $existingGroup = Get-ADGroup -Filter "Name -eq '$groupName'" -ErrorAction Stop
         Write-Output "Group '$groupName' already exists"
       }
       catch {
-        # Create the group
         try {
           New-ADGroup -Name $groupName -GroupScope Global -GroupCategory Security -Path $ouPath -Description $description
           Write-Output "Created group: $groupName"
@@ -201,6 +376,9 @@
   ignore_errors: true
   tags: [ad, groups]
 
+# =============================================================================
+# Create Domain Users (same as secure version)
+# =============================================================================
 - name: Create Domain Users
   ansible.windows.win_powershell:
     script: |
@@ -213,13 +391,11 @@
       $ouPath = "{{ item.ou }}"
       $groups = @({{ item.groups | map('regex_replace', '^(.*)$', '\"\\1\"') | join(',') }})
 
-      # Check if user exists
       try {
         $existingUser = Get-ADUser -Filter "SamAccountName -eq '$username'" -ErrorAction Stop
         Write-Output "User '$username' already exists"
       }
       catch {
-        # Create the user
         try {
           New-ADUser -Name $displayName `
             -SamAccountName $username `
@@ -236,7 +412,6 @@
 
           Write-Output "Created user: $username"
 
-          # Add user to groups
           foreach ($group in $groups) {
             try {
               Add-ADGroupMember -Identity $group -Members $username
@@ -254,47 +429,100 @@
   loop: "{{ domain_users | default([]) }}"
   when: is_dc.output[0] == "true"
   ignore_errors: true
-  no_log: false  # Set to true in production to hide passwords
+  no_log: false
   tags: [ad, users]
 
 # =============================================================================
-# Windows Event Log Configuration
+# Create Additional Vulnerable Accounts
 # =============================================================================
-- name: Increase Security Event Log Size
-  community.windows.win_eventlog:
-    name: Security
-    maximum_size: 1GB
-    retention_days: 30
-  tags: [logging]
-
-- name: Increase System Event Log Size
-  community.windows.win_eventlog:
-    name: System
-    maximum_size: 256MB
-    retention_days: 30
-  tags: [logging]
-
-- name: Increase Application Event Log Size
-  community.windows.win_eventlog:
-    name: Application
-    maximum_size: 256MB
-    retention_days: 30
-  tags: [logging]
-
-# =============================================================================
-# Time Synchronization
-# =============================================================================
-- name: Configure NTP settings
+- name: "VULN: Create backdoor admin account"
   ansible.windows.win_powershell:
     script: |
-      # Configure Windows Time Service
-      w32tm /config /manualpeerlist:"{{ ntp_server | default('time.windows.com') }}" /syncfromflags:manual /reliable:yes /update
-      Restart-Service w32time
-      w32tm /resync /nowait
-      Write-Output "NTP configured"
+      $password = ConvertTo-SecureString "admin" -AsPlainText -Force
+
+      try {
+        New-ADUser -Name "svc_backup" `
+          -SamAccountName "svc_backup" `
+          -UserPrincipalName "svc_backup@{{ domain_name }}" `
+          -Description "Backup Service Account" `
+          -Path "CN=Users,DC=blue,DC=lab" `
+          -AccountPassword $password `
+          -Enabled $true `
+          -PasswordNeverExpires $true
+
+        Add-ADGroupMember -Identity "Domain Admins" -Members "svc_backup"
+        Write-Output "Created vulnerable service account: svc_backup"
+      }
+      catch {
+        Write-Output "Account may already exist: $($_.Exception.Message)"
+      }
+  when: is_dc.output[0] == "true"
   ignore_errors: true
-  tags: [ntp]
+  tags: [vulnerability, accounts]
+
+- name: "VULN: Create account with username as password"
+  ansible.windows.win_powershell:
+    script: |
+      $password = ConvertTo-SecureString "helpdesk" -AsPlainText -Force
+
+      try {
+        New-ADUser -Name "helpdesk" `
+          -SamAccountName "helpdesk" `
+          -UserPrincipalName "helpdesk@{{ domain_name }}" `
+          -Description "Help Desk Generic Account" `
+          -Path "CN=Users,DC=blue,DC=lab" `
+          -AccountPassword $password `
+          -Enabled $true `
+          -PasswordNeverExpires $true
+
+        Write-Output "Created vulnerable account: helpdesk"
+      }
+      catch {
+        Write-Output "Account may already exist: $($_.Exception.Message)"
+      }
+  when: is_dc.output[0] == "true"
+  ignore_errors: true
+  tags: [vulnerability, accounts]
+
+# =============================================================================
+# Reduce Event Log Sizes (make forensics harder)
+# =============================================================================
+- name: "VULN: Set minimal Security Event Log Size"
+  community.windows.win_eventlog:
+    name: Security
+    maximum_size: 1MB
+    retention_days: 1
+  tags: [vulnerability, logging]
+
+- name: "VULN: Set minimal System Event Log Size"
+  community.windows.win_eventlog:
+    name: System
+    maximum_size: 1MB
+    retention_days: 1
+  tags: [vulnerability, logging]
+
+- name: "VULN: Set minimal Application Event Log Size"
+  community.windows.win_eventlog:
+    name: Application
+    maximum_size: 1MB
+    retention_days: 1
+  tags: [vulnerability, logging]
+
+# =============================================================================
+# Create Scheduled Task Persistence (for detection training)
+# =============================================================================
+- name: "VULN: Create suspicious scheduled task"
+  ansible.windows.win_powershell:
+    script: |
+      $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -WindowStyle Hidden -Command `"Get-Process | Out-File C:\Windows\Temp\procs.txt`""
+      $trigger = New-ScheduledTaskTrigger -Daily -At "3:00AM"
+      $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+
+      Register-ScheduledTask -TaskName "SystemHealthCheck" -Action $action -Trigger $trigger -Principal $principal -Description "System maintenance task" -Force
+      Write-Output "Created suspicious scheduled task"
+  ignore_errors: true
+  tags: [vulnerability, persistence]
 
 - name: Display completion message
   ansible.builtin.debug:
-    msg: "Windows base configuration completed for {{ inventory_hostname }}"
+    msg: "VULNERABLE Windows configuration completed for {{ inventory_hostname }}"

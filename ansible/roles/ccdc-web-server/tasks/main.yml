@@ -1,19 +1,31 @@
 ---
 # =============================================================================
-# CCDC Web Server Role (Linux/Ubuntu)
-# Configures Apache web server with sample intranet site
+# CCDC Web Server Role (Linux/Ubuntu) - VULNERABLE VERSION
 # =============================================================================
-# This role sets up:
-# - Apache2 web server installation
-# - SSL/TLS configuration with self-signed certificate
-# - UFW firewall configuration
-# - Sample corporate intranet site
-# - Basic security hardening
+# WARNING: This role INTENTIONALLY introduces security vulnerabilities
+# for blue team training purposes. DO NOT use in production!
+#
+# Vulnerabilities introduced:
+# - V-WEB-001: Directory listing enabled
+# - V-WEB-002: Server version exposed
+# - V-WEB-003: Weak SSH configuration (root login, password auth)
+# - V-WEB-004: No fail2ban protection
+# - V-WEB-005: World-readable sensitive files
+# - V-WEB-006: SQL injection vulnerable page
+# - V-WEB-007: Default credentials in config files
+# - V-WEB-008: Unnecessary services running
+# - V-WEB-009: Weak file permissions
+# - V-WEB-010: phpinfo() exposed
+# - V-WEB-011: Backup files accessible
+# - V-WEB-012: .git directory exposed
+# - V-WEB-013: Firewall disabled
+# - V-WEB-014: Outdated SSL/TLS configuration
+# - V-WEB-015: Command injection vulnerability
 # =============================================================================
 
 - name: Display role information
   ansible.builtin.debug:
-    msg: "Configuring Web Server on {{ inventory_hostname }}"
+    msg: "Configuring VULNERABLE Web Server on {{ inventory_hostname }}"
 
 # =============================================================================
 # System Updates and Package Installation
@@ -30,31 +42,43 @@
     name:
       - apache2
       - apache2-utils
-      - libapache2-mod-security2
       - ssl-cert
       - openssl
-      - ufw
-      - fail2ban
-      - logwatch
-      - unattended-upgrades
-    state: present
-  become: true
-  tags: [install]
-
-- name: Install PHP (optional, for dynamic content)
-  ansible.builtin.apt:
-    name:
       - php
       - php-mysql
       - php-common
       - libapache2-mod-php
+      - git
+      - curl
+      - netcat-openbsd
     state: present
   become: true
-  when: install_php | default(true)
-  tags: [install, php]
+  tags: [install]
 
 # =============================================================================
-# Apache Configuration
+# V-WEB-002: Expose Server Version
+# =============================================================================
+- name: "VULN V-WEB-002: Configure Apache to expose version"
+  ansible.builtin.copy:
+    content: |
+      # VULNERABLE: Server version exposed
+      ServerSignature On
+      ServerTokens Full
+    dest: /etc/apache2/conf-available/server-info.conf
+    mode: '0644'
+  become: true
+  notify: restart apache
+  tags: [vulnerability, apache]
+
+- name: Enable server-info configuration
+  ansible.builtin.command: a2enconf server-info
+  become: true
+  changed_when: true
+  notify: restart apache
+  tags: [vulnerability, apache]
+
+# =============================================================================
+# V-WEB-001: Enable Directory Listing
 # =============================================================================
 - name: Enable required Apache modules
   community.general.apache2_module:
@@ -64,109 +88,63 @@
     - ssl
     - rewrite
     - headers
-    - security2
   become: true
   notify: restart apache
   tags: [apache]
 
-- name: Configure Apache security settings
-  ansible.builtin.copy:
-    content: |
-      # =======================================================================
-      # Apache Security Configuration - CCDC Training Environment
-      # =======================================================================
-
-      # Disable server signature
-      ServerSignature Off
-      ServerTokens Prod
-
-      # Disable directory listing
-      <Directory />
-          Options -Indexes
-          AllowOverride None
-          Require all denied
-      </Directory>
-
-      # Security headers
-      Header always set X-Content-Type-Options "nosniff"
-      Header always set X-Frame-Options "SAMEORIGIN"
-      Header always set X-XSS-Protection "1; mode=block"
-      Header always set Referrer-Policy "strict-origin-when-cross-origin"
-
-      # Disable TRACE method
-      TraceEnable Off
-
-      # Limit request size (10MB)
-      LimitRequestBody 10485760
-
-      # Timeout settings
-      Timeout 60
-      KeepAliveTimeout 5
-
-    dest: /etc/apache2/conf-available/security-hardening.conf
-    mode: '0644'
-  become: true
-  notify: restart apache
-  tags: [apache, security]
-
-- name: Enable security configuration
-  ansible.builtin.command: a2enconf security-hardening
-  become: true
-  changed_when: true
-  notify: restart apache
-  tags: [apache, security]
-
 # =============================================================================
-# SSL/TLS Configuration
+# V-WEB-014: Weak SSL Configuration
 # =============================================================================
 - name: Create SSL directory
   ansible.builtin.file:
     path: /etc/apache2/ssl
     state: directory
-    mode: '0700'
+    mode: '0755'  # VULNERABLE: Too permissive
   become: true
-  when: enable_ssl | default(true)
-  tags: [ssl]
+  tags: [vulnerability, ssl]
 
-- name: Generate self-signed SSL certificate
+- name: "VULN V-WEB-014: Generate weak SSL certificate"
   ansible.builtin.command: >
-    openssl req -x509 -nodes -days 365 -newkey rsa:2048
+    openssl req -x509 -nodes -days 365 -newkey rsa:1024
     -keyout /etc/apache2/ssl/{{ site_name | default('intranet.blue.lab') }}.key
     -out /etc/apache2/ssl/{{ site_name | default('intranet.blue.lab') }}.crt
     -subj "/C=US/ST=State/L=City/O={{ org_name | default('Blue Team Industries') }}/OU={{ org_unit | default('IT') }}/CN={{ site_name | default('intranet.blue.lab') }}"
   args:
     creates: /etc/apache2/ssl/{{ site_name | default('intranet.blue.lab') }}.crt
   become: true
-  when: enable_ssl | default(true)
-  tags: [ssl]
+  tags: [vulnerability, ssl]
 
-- name: Set SSL key permissions
+- name: "VULN V-WEB-009: Set weak SSL key permissions"
   ansible.builtin.file:
     path: /etc/apache2/ssl/{{ site_name | default('intranet.blue.lab') }}.key
-    mode: '0600'
+    mode: '0644'  # VULNERABLE: Key is world-readable
   become: true
-  when: enable_ssl | default(true)
-  tags: [ssl]
+  tags: [vulnerability, ssl]
 
 # =============================================================================
-# Virtual Host Configuration
+# V-WEB-001: Virtual Host with Directory Listing
 # =============================================================================
-- name: Create virtual host configuration
+- name: "VULN V-WEB-001: Create vulnerable virtual host configuration"
   ansible.builtin.copy:
     content: |
-      # =======================================================================
-      # {{ site_name | default('intranet.blue.lab') }} - Corporate Intranet
-      # =======================================================================
+      # VULNERABLE CONFIGURATION
 
       <VirtualHost *:80>
           ServerName {{ site_name | default('intranet.blue.lab') }}
           ServerAlias www.{{ site_name | default('intranet.blue.lab') }}
           DocumentRoot {{ web_root | default('/var/www/html') }}
 
-          # Redirect all HTTP to HTTPS
-          RewriteEngine On
-          RewriteCond %{HTTPS} off
-          RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+          # VULNERABLE: Directory listing enabled
+          <Directory {{ web_root | default('/var/www/html') }}>
+              Options +Indexes +FollowSymLinks
+              AllowOverride All
+              Require all granted
+          </Directory>
+
+          # VULNERABLE: Allow access to backup files
+          <FilesMatch "\.(bak|old|sql|tar|gz|zip)$">
+              Require all granted
+          </FilesMatch>
 
           ErrorLog ${APACHE_LOG_DIR}/{{ site_name | default('intranet') }}_error.log
           CustomLog ${APACHE_LOG_DIR}/{{ site_name | default('intranet') }}_access.log combined
@@ -174,20 +152,18 @@
 
       <VirtualHost *:443>
           ServerName {{ site_name | default('intranet.blue.lab') }}
-          ServerAlias www.{{ site_name | default('intranet.blue.lab') }}
           DocumentRoot {{ web_root | default('/var/www/html') }}
 
           SSLEngine on
           SSLCertificateFile /etc/apache2/ssl/{{ site_name | default('intranet.blue.lab') }}.crt
           SSLCertificateKeyFile /etc/apache2/ssl/{{ site_name | default('intranet.blue.lab') }}.key
 
-          # Modern SSL configuration
-          SSLProtocol all -SSLv3 -TLSv1 -TLSv1.1
-          SSLCipherSuite ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256
-          SSLHonorCipherOrder off
+          # VULNERABLE: Weak SSL protocols allowed
+          SSLProtocol all
+          SSLCipherSuite ALL:!aNULL
 
           <Directory {{ web_root | default('/var/www/html') }}>
-              Options -Indexes +FollowSymLinks
+              Options +Indexes +FollowSymLinks
               AllowOverride All
               Require all granted
           </Directory>
@@ -199,7 +175,7 @@
     mode: '0644'
   become: true
   notify: restart apache
-  tags: [apache, vhost]
+  tags: [vulnerability, vhost]
 
 - name: Disable default site
   ansible.builtin.command: a2dissite 000-default
@@ -216,7 +192,7 @@
   tags: [apache]
 
 # =============================================================================
-# Deploy Sample Intranet Site
+# Deploy Web Content with Vulnerabilities
 # =============================================================================
 - name: Create web root directory
   ansible.builtin.file:
@@ -224,10 +200,9 @@
     state: directory
     owner: www-data
     group: www-data
-    mode: '0755'
+    mode: '0777'  # VULNERABLE: World-writable
   become: true
-  when: deploy_sample_site | default(true)
-  tags: [site]
+  tags: [vulnerability, site]
 
 - name: Deploy sample intranet homepage
   ansible.builtin.copy:
@@ -236,130 +211,34 @@
       <html lang="en">
       <head>
           <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
           <title>{{ org_name | default('Blue Team Industries') }} - Intranet</title>
           <style>
-              * { margin: 0; padding: 0; box-sizing: border-box; }
-              body {
-                  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                  background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
-                  min-height: 100vh;
-                  color: #333;
-              }
-              .header {
-                  background: rgba(255,255,255,0.95);
-                  padding: 20px;
-                  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-              }
-              .header h1 { color: #1e3c72; }
-              .header p { color: #666; margin-top: 5px; }
-              .container {
-                  max-width: 1200px;
-                  margin: 40px auto;
-                  padding: 0 20px;
-              }
-              .grid {
-                  display: grid;
-                  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-                  gap: 20px;
-              }
-              .card {
-                  background: white;
-                  border-radius: 10px;
-                  padding: 25px;
-                  box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-              }
-              .card h2 {
-                  color: #1e3c72;
-                  margin-bottom: 15px;
-                  border-bottom: 2px solid #2a5298;
-                  padding-bottom: 10px;
-              }
-              .card ul { list-style: none; }
-              .card li {
-                  padding: 8px 0;
-                  border-bottom: 1px solid #eee;
-              }
-              .card a {
-                  color: #2a5298;
-                  text-decoration: none;
-              }
-              .card a:hover { text-decoration: underline; }
-              .announcement {
-                  background: #fff3cd;
-                  border-left: 4px solid #ffc107;
-                  padding: 15px;
-                  margin-bottom: 20px;
-                  border-radius: 0 5px 5px 0;
-              }
-              .footer {
-                  text-align: center;
-                  padding: 20px;
-                  color: rgba(255,255,255,0.8);
-                  margin-top: 40px;
-              }
+              body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
+              .container { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; }
+              h1 { color: #1e3c72; }
+              a { color: #2a5298; }
+              .warning { background: #fff3cd; padding: 10px; border-radius: 5px; margin: 10px 0; }
           </style>
       </head>
       <body>
-          <div class="header">
-              <h1>{{ org_name | default('Blue Team Industries') }}</h1>
-              <p>Corporate Intranet Portal</p>
-          </div>
-
           <div class="container">
-              <div class="announcement">
-                  <strong>IT Notice:</strong> Please remember to update your passwords regularly and report any suspicious emails to the IT Help Desk.
+              <h1>{{ org_name | default('Blue Team Industries') }} Intranet</h1>
+              <p>Welcome to the corporate intranet.</p>
+
+              <h2>Quick Links</h2>
+              <ul>
+                  <li><a href="/admin/">Admin Panel</a></li>
+                  <li><a href="/search.php">Employee Search</a></li>
+                  <li><a href="/upload.php">File Upload</a></li>
+                  <li><a href="/ping.php">Network Tools</a></li>
+                  <li><a href="/phpinfo.php">System Info</a></li>
+              </ul>
+
+              <div class="warning">
+                  <strong>IT Notice:</strong> Report any issues to helpdesk@blue.lab
               </div>
 
-              <div class="grid">
-                  <div class="card">
-                      <h2>Quick Links</h2>
-                      <ul>
-                          <li><a href="#">Employee Directory</a></li>
-                          <li><a href="#">IT Help Desk Portal</a></li>
-                          <li><a href="#">HR Self-Service</a></li>
-                          <li><a href="#">Expense Reports</a></li>
-                          <li><a href="#">Company Policies</a></li>
-                      </ul>
-                  </div>
-
-                  <div class="card">
-                      <h2>Department Resources</h2>
-                      <ul>
-                          <li><a href="#">Sales Dashboard</a></li>
-                          <li><a href="#">Marketing Materials</a></li>
-                          <li><a href="#">Finance Reports</a></li>
-                          <li><a href="#">IT Documentation</a></li>
-                          <li><a href="#">HR Forms</a></li>
-                      </ul>
-                  </div>
-
-                  <div class="card">
-                      <h2>IT Services</h2>
-                      <ul>
-                          <li><a href="#">Submit IT Ticket</a></li>
-                          <li><a href="#">Password Reset</a></li>
-                          <li><a href="#">Software Request</a></li>
-                          <li><a href="#">VPN Setup Guide</a></li>
-                          <li><a href="#">Security Awareness</a></li>
-                      </ul>
-                  </div>
-
-                  <div class="card">
-                      <h2>Company News</h2>
-                      <ul>
-                          <li>Welcome to our new employees!</li>
-                          <li>Q4 All-Hands Meeting - Friday</li>
-                          <li>Security Training Due This Month</li>
-                          <li>Office Closed for Holiday</li>
-                      </ul>
-                  </div>
-              </div>
-          </div>
-
-          <div class="footer">
-              <p>&copy; 2024 {{ org_name | default('Blue Team Industries') }} - Internal Use Only</p>
-              <p>Contact IT: helpdesk@{{ domain_name | default('blue.lab') }} | Server: {{ inventory_hostname }}</p>
+              <p><small>Server: {{ inventory_hostname }}</small></p>
           </div>
       </body>
       </html>
@@ -368,132 +247,319 @@
     group: www-data
     mode: '0644'
   become: true
-  when: deploy_sample_site | default(true)
   tags: [site]
 
-- name: Create PHP info page (for testing)
+# =============================================================================
+# V-WEB-010: Create phpinfo page
+# =============================================================================
+- name: "VULN V-WEB-010: Create phpinfo page"
   ansible.builtin.copy:
     content: |
       <?php
-      // Simple PHP test page
-      echo "<h1>PHP is working!</h1>";
-      echo "<p>Server: " . gethostname() . "</p>";
-      echo "<p>PHP Version: " . phpversion() . "</p>";
-      echo "<p>Server Time: " . date('Y-m-d H:i:s') . "</p>";
+      // VULNERABLE: phpinfo exposed
+      phpinfo();
       ?>
-    dest: "{{ web_root | default('/var/www/html') }}/info.php"
+    dest: "{{ web_root | default('/var/www/html') }}/phpinfo.php"
     owner: www-data
     group: www-data
     mode: '0644'
   become: true
-  when:
-    - deploy_sample_site | default(true)
-    - install_php | default(true)
-  tags: [site, php]
+  tags: [vulnerability, php]
 
 # =============================================================================
-# Firewall Configuration
+# V-WEB-006: SQL Injection Vulnerable Page
 # =============================================================================
-- name: Configure UFW defaults
-  community.general.ufw:
-    direction: "{{ item.direction }}"
-    policy: "{{ item.policy }}"
-  loop:
-    - { direction: 'incoming', policy: 'deny' }
-    - { direction: 'outgoing', policy: 'allow' }
-  become: true
-  tags: [firewall]
-
-- name: Allow SSH through firewall
-  community.general.ufw:
-    rule: allow
-    port: '22'
-    proto: tcp
-  become: true
-  tags: [firewall]
-
-- name: Allow HTTP through firewall
-  community.general.ufw:
-    rule: allow
-    port: '80'
-    proto: tcp
-  become: true
-  tags: [firewall]
-
-- name: Allow HTTPS through firewall
-  community.general.ufw:
-    rule: allow
-    port: '443'
-    proto: tcp
-  become: true
-  tags: [firewall]
-
-- name: Enable UFW
-  community.general.ufw:
-    state: enabled
-  become: true
-  tags: [firewall]
-
-# =============================================================================
-# Fail2ban Configuration
-# =============================================================================
-- name: Configure fail2ban for Apache
+- name: "VULN V-WEB-006: Create SQL injection vulnerable search page"
   ansible.builtin.copy:
     content: |
-      [apache-auth]
-      enabled = true
-      port = http,https
-      filter = apache-auth
-      logpath = /var/log/apache2/*error.log
-      maxretry = 5
-      bantime = 600
+      <?php
+      // VULNERABLE: SQL Injection
+      // This page is intentionally vulnerable for training purposes
 
-      [apache-badbots]
-      enabled = true
-      port = http,https
-      filter = apache-badbots
-      logpath = /var/log/apache2/*access.log
-      maxretry = 2
-      bantime = 86400
+      $db_host = "10.{{ range_id | default('1') }}.10.30";
+      $db_user = "webapp";
+      $db_pass = "WebApp2024!";
+      $db_name = "employees";
 
-      [apache-noscript]
-      enabled = true
-      port = http,https
-      filter = apache-noscript
-      logpath = /var/log/apache2/*error.log
-      maxretry = 5
-      bantime = 600
-    dest: /etc/fail2ban/jail.d/apache.conf
-    mode: '0644'
-  become: true
-  notify: restart fail2ban
-  tags: [security, fail2ban]
+      echo "<html><head><title>Employee Search</title>";
+      echo "<style>body{font-family:Arial;margin:40px;} table{border-collapse:collapse;} td,th{border:1px solid #ddd;padding:8px;}</style>";
+      echo "</head><body>";
+      echo "<h1>Employee Search</h1>";
+      echo "<form method='GET'>";
+      echo "<input type='text' name='search' placeholder='Search by name...' value='" . ($_GET['search'] ?? '') . "'>";
+      echo "<button type='submit'>Search</button>";
+      echo "</form><br>";
 
-# =============================================================================
-# Log Configuration
-# =============================================================================
-- name: Configure Apache log rotation
-  ansible.builtin.copy:
-    content: |
-      /var/log/apache2/*.log {
-          daily
-          missingok
-          rotate 14
-          compress
-          delaycompress
-          notifempty
-          create 640 root adm
-          sharedscripts
-          postrotate
-              if /etc/init.d/apache2 status > /dev/null ; then
-                  /etc/init.d/apache2 reload > /dev/null
-              fi
-          endscript
+      if (isset($_GET['search'])) {
+          $search = $_GET['search'];  // VULNERABLE: No sanitization
+
+          $conn = new mysqli($db_host, $db_user, $db_pass, $db_name);
+
+          if ($conn->connect_error) {
+              die("Connection failed: " . $conn->connect_error);
+          }
+
+          // VULNERABLE: Direct string concatenation
+          $sql = "SELECT * FROM employees WHERE first_name LIKE '%$search%' OR last_name LIKE '%$search%'";
+
+          // Debug mode - shows query (VULNERABLE)
+          if (isset($_GET['debug'])) {
+              echo "<pre>Query: $sql</pre>";
+          }
+
+          $result = $conn->query($sql);
+
+          if ($result && $result->num_rows > 0) {
+              echo "<table><tr><th>ID</th><th>Name</th><th>Email</th><th>Department</th><th>Salary</th></tr>";
+              while($row = $result->fetch_assoc()) {
+                  echo "<tr><td>".$row["id"]."</td><td>".$row["first_name"]." ".$row["last_name"]."</td><td>".$row["email"]."</td><td>".$row["department_id"]."</td><td>$".$row["salary"]."</td></tr>";
+              }
+              echo "</table>";
+          } else {
+              echo "No results found.";
+          }
+
+          $conn->close();
       }
-    dest: /etc/logrotate.d/apache2
+
+      echo "</body></html>";
+      ?>
+    dest: "{{ web_root | default('/var/www/html') }}/search.php"
+    owner: www-data
+    group: www-data
     mode: '0644'
   become: true
-  tags: [logging]
+  tags: [vulnerability, sqli]
+
+# =============================================================================
+# V-WEB-015: Command Injection Vulnerable Page
+# =============================================================================
+- name: "VULN V-WEB-015: Create command injection vulnerable page"
+  ansible.builtin.copy:
+    content: |
+      <?php
+      // VULNERABLE: Command Injection
+      // This page is intentionally vulnerable for training purposes
+
+      echo "<html><head><title>Network Tools</title>";
+      echo "<style>body{font-family:Arial;margin:40px;} pre{background:#f5f5f5;padding:10px;}</style>";
+      echo "</head><body>";
+      echo "<h1>Network Diagnostic Tools</h1>";
+      echo "<form method='GET'>";
+      echo "<input type='text' name='host' placeholder='Enter hostname or IP' value='" . ($_GET['host'] ?? '') . "'>";
+      echo "<button type='submit'>Ping</button>";
+      echo "</form><br>";
+
+      if (isset($_GET['host']) && !empty($_GET['host'])) {
+          $host = $_GET['host'];  // VULNERABLE: No sanitization
+
+          echo "<h2>Ping Results:</h2>";
+          echo "<pre>";
+          // VULNERABLE: Direct command execution
+          system("ping -c 4 " . $host);
+          echo "</pre>";
+      }
+
+      echo "<p><small>For IT troubleshooting use only.</small></p>";
+      echo "</body></html>";
+      ?>
+    dest: "{{ web_root | default('/var/www/html') }}/ping.php"
+    owner: www-data
+    group: www-data
+    mode: '0644'
+  become: true
+  tags: [vulnerability, cmdi]
+
+# =============================================================================
+# V-WEB-007: Configuration Files with Credentials
+# =============================================================================
+- name: "VULN V-WEB-007: Create config file with credentials"
+  ansible.builtin.copy:
+    content: |
+      <?php
+      // Database Configuration
+      // VULNERABLE: Credentials in web-accessible file
+
+      define('DB_HOST', '10.{{ range_id | default('1') }}.10.30');
+      define('DB_USER', 'webapp');
+      define('DB_PASS', 'WebApp2024!');
+      define('DB_NAME', 'inventory');
+
+      // Admin credentials
+      define('ADMIN_USER', 'admin');
+      define('ADMIN_PASS', 'admin123');
+
+      // API Keys
+      define('API_KEY', 'sk_live_1234567890abcdef');
+      define('SECRET_KEY', 'super_secret_key_12345');
+
+      ?>
+    dest: "{{ web_root | default('/var/www/html') }}/config.php"
+    owner: www-data
+    group: www-data
+    mode: '0644'  # VULNERABLE: World-readable
+  become: true
+  tags: [vulnerability, credentials]
+
+# =============================================================================
+# V-WEB-011: Backup Files in Web Root
+# =============================================================================
+- name: "VULN V-WEB-011: Create backup files in web root"
+  ansible.builtin.copy:
+    content: |
+      -- Database Backup
+      -- Generated: 2024-01-15
+      -- VULNERABLE: Backup in web root
+
+      CREATE DATABASE IF NOT EXISTS employees;
+      USE employees;
+
+      INSERT INTO employees VALUES (1, 'Alex', 'Thompson', 'itmgr@blue.lab', 1, '2020-01-15', 95000);
+      INSERT INTO employees VALUES (2, 'John', 'Smith', 'jsmith@blue.lab', 3, '2021-03-20', 65000);
+
+      -- Passwords table (legacy)
+      CREATE TABLE passwords (username VARCHAR(50), password VARCHAR(50));
+      INSERT INTO passwords VALUES ('admin', 'admin123');
+      INSERT INTO passwords VALUES ('backup', 'backup2024');
+    dest: "{{ web_root | default('/var/www/html') }}/backup.sql"
+    owner: www-data
+    group: www-data
+    mode: '0644'
+  become: true
+  tags: [vulnerability, backup]
+
+- name: "VULN V-WEB-011: Create old config backup"
+  ansible.builtin.copy:
+    content: |
+      # Old configuration backup
+      admin_password=OldAdmin123!
+      mysql_root=MySQLRoot123!
+      ssh_key_passphrase=KeyPass2024
+    dest: "{{ web_root | default('/var/www/html') }}/config.php.bak"
+    owner: www-data
+    group: www-data
+    mode: '0644'
+  become: true
+  tags: [vulnerability, backup]
+
+# =============================================================================
+# V-WEB-012: Exposed .git Directory
+# =============================================================================
+- name: "VULN V-WEB-012: Create fake .git directory"
+  ansible.builtin.file:
+    path: "{{ web_root | default('/var/www/html') }}/.git"
+    state: directory
+    owner: www-data
+    group: www-data
+    mode: '0755'
+  become: true
+  tags: [vulnerability, git]
+
+- name: "VULN V-WEB-012: Create fake git config"
+  ansible.builtin.copy:
+    content: |
+      [core]
+          repositoryformatversion = 0
+          filemode = true
+          bare = false
+      [remote "origin"]
+          url = https://github.com/blueteam/internal-app.git
+          fetch = +refs/heads/*:refs/remotes/origin/*
+      [user]
+          name = Developer
+          email = dev@blue.lab
+    dest: "{{ web_root | default('/var/www/html') }}/.git/config"
+    owner: www-data
+    group: www-data
+    mode: '0644'
+  become: true
+  tags: [vulnerability, git]
+
+# =============================================================================
+# V-WEB-003: Weak SSH Configuration
+# =============================================================================
+- name: "VULN V-WEB-003: Configure weak SSH settings"
+  ansible.builtin.copy:
+    content: |
+      # VULNERABLE SSH Configuration
+      Port 22
+      PermitRootLogin yes
+      PasswordAuthentication yes
+      PermitEmptyPasswords yes
+      ChallengeResponseAuthentication no
+      UsePAM yes
+      X11Forwarding yes
+      PrintMotd no
+      AcceptEnv LANG LC_*
+      Subsystem sftp /usr/lib/openssh/sftp-server
+
+      # VULNERABLE: Weak ciphers allowed
+      Ciphers aes128-cbc,aes256-cbc,3des-cbc,aes128-ctr,aes256-ctr
+
+      # VULNERABLE: Weak MACs allowed
+      MACs hmac-sha1,hmac-md5
+    dest: /etc/ssh/sshd_config
+    mode: '0644'
+  become: true
+  notify: restart ssh
+  tags: [vulnerability, ssh]
+
+# =============================================================================
+# V-WEB-013: Disable Firewall
+# =============================================================================
+- name: "VULN V-WEB-013: Disable UFW firewall"
+  community.general.ufw:
+    state: disabled
+  become: true
+  tags: [vulnerability, firewall]
+
+# =============================================================================
+# V-WEB-004: Disable Fail2ban
+# =============================================================================
+- name: "VULN V-WEB-004: Ensure fail2ban is not installed"
+  ansible.builtin.apt:
+    name: fail2ban
+    state: absent
+  become: true
+  tags: [vulnerability, fail2ban]
+
+# =============================================================================
+# V-WEB-008: Install and Enable Unnecessary Services
+# =============================================================================
+- name: "VULN V-WEB-008: Install unnecessary services"
+  ansible.builtin.apt:
+    name:
+      - telnetd
+      - vsftpd
+    state: present
+  become: true
+  ignore_errors: true
+  tags: [vulnerability, services]
+
+- name: "VULN V-WEB-008: Configure insecure FTP"
+  ansible.builtin.copy:
+    content: |
+      listen=YES
+      anonymous_enable=YES
+      local_enable=YES
+      write_enable=YES
+      anon_upload_enable=YES
+      anon_mkdir_write_enable=YES
+      dirmessage_enable=YES
+      use_localtime=YES
+      xferlog_enable=YES
+      connect_from_port_20=YES
+      chroot_local_user=NO
+      secure_chroot_dir=/var/run/vsftpd/empty
+      pam_service_name=vsftpd
+      rsa_cert_file=/etc/ssl/certs/ssl-cert-snakeoil.pem
+      rsa_private_key_file=/etc/ssl/private/ssl-cert-snakeoil.key
+      ssl_enable=NO
+    dest: /etc/vsftpd.conf
+    mode: '0644'
+  become: true
+  ignore_errors: true
+  tags: [vulnerability, services]
 
 # =============================================================================
 # Service Management
@@ -506,16 +572,6 @@
   become: true
   tags: [service]
 
-- name: Ensure fail2ban is started and enabled
-  ansible.builtin.systemd:
-    name: fail2ban
-    state: started
-    enabled: true
-  become: true
-  tags: [service]
-
 - name: Display completion message
   ansible.builtin.debug:
-    msg: |
-      Web Server configuration completed on {{ inventory_hostname }}
-      Site URL: https://{{ site_name | default('intranet.blue.lab') }}
+    msg: "VULNERABLE Web Server configuration completed on {{ inventory_hostname }}"
