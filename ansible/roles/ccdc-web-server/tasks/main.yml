@@ -1,0 +1,521 @@
+---
+# =============================================================================
+# CCDC Web Server Role (Linux/Ubuntu)
+# Configures Apache web server with sample intranet site
+# =============================================================================
+# This role sets up:
+# - Apache2 web server installation
+# - SSL/TLS configuration with self-signed certificate
+# - UFW firewall configuration
+# - Sample corporate intranet site
+# - Basic security hardening
+# =============================================================================
+
+- name: Display role information
+  ansible.builtin.debug:
+    msg: "Configuring Web Server on {{ inventory_hostname }}"
+
+# =============================================================================
+# System Updates and Package Installation
+# =============================================================================
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: yes
+    cache_valid_time: 3600
+  become: true
+  tags: [install]
+
+- name: Install Apache and required packages
+  ansible.builtin.apt:
+    name:
+      - apache2
+      - apache2-utils
+      - libapache2-mod-security2
+      - ssl-cert
+      - openssl
+      - ufw
+      - fail2ban
+      - logwatch
+      - unattended-upgrades
+    state: present
+  become: true
+  tags: [install]
+
+- name: Install PHP (optional, for dynamic content)
+  ansible.builtin.apt:
+    name:
+      - php
+      - php-mysql
+      - php-common
+      - libapache2-mod-php
+    state: present
+  become: true
+  when: install_php | default(true)
+  tags: [install, php]
+
+# =============================================================================
+# Apache Configuration
+# =============================================================================
+- name: Enable required Apache modules
+  community.general.apache2_module:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - ssl
+    - rewrite
+    - headers
+    - security2
+  become: true
+  notify: restart apache
+  tags: [apache]
+
+- name: Configure Apache security settings
+  ansible.builtin.copy:
+    content: |
+      # =======================================================================
+      # Apache Security Configuration - CCDC Training Environment
+      # =======================================================================
+
+      # Disable server signature
+      ServerSignature Off
+      ServerTokens Prod
+
+      # Disable directory listing
+      <Directory />
+          Options -Indexes
+          AllowOverride None
+          Require all denied
+      </Directory>
+
+      # Security headers
+      Header always set X-Content-Type-Options "nosniff"
+      Header always set X-Frame-Options "SAMEORIGIN"
+      Header always set X-XSS-Protection "1; mode=block"
+      Header always set Referrer-Policy "strict-origin-when-cross-origin"
+
+      # Disable TRACE method
+      TraceEnable Off
+
+      # Limit request size (10MB)
+      LimitRequestBody 10485760
+
+      # Timeout settings
+      Timeout 60
+      KeepAliveTimeout 5
+
+    dest: /etc/apache2/conf-available/security-hardening.conf
+    mode: '0644'
+  become: true
+  notify: restart apache
+  tags: [apache, security]
+
+- name: Enable security configuration
+  ansible.builtin.command: a2enconf security-hardening
+  become: true
+  changed_when: true
+  notify: restart apache
+  tags: [apache, security]
+
+# =============================================================================
+# SSL/TLS Configuration
+# =============================================================================
+- name: Create SSL directory
+  ansible.builtin.file:
+    path: /etc/apache2/ssl
+    state: directory
+    mode: '0700'
+  become: true
+  when: enable_ssl | default(true)
+  tags: [ssl]
+
+- name: Generate self-signed SSL certificate
+  ansible.builtin.command: >
+    openssl req -x509 -nodes -days 365 -newkey rsa:2048
+    -keyout /etc/apache2/ssl/{{ site_name | default('intranet.blue.lab') }}.key
+    -out /etc/apache2/ssl/{{ site_name | default('intranet.blue.lab') }}.crt
+    -subj "/C=US/ST=State/L=City/O={{ org_name | default('Blue Team Industries') }}/OU={{ org_unit | default('IT') }}/CN={{ site_name | default('intranet.blue.lab') }}"
+  args:
+    creates: /etc/apache2/ssl/{{ site_name | default('intranet.blue.lab') }}.crt
+  become: true
+  when: enable_ssl | default(true)
+  tags: [ssl]
+
+- name: Set SSL key permissions
+  ansible.builtin.file:
+    path: /etc/apache2/ssl/{{ site_name | default('intranet.blue.lab') }}.key
+    mode: '0600'
+  become: true
+  when: enable_ssl | default(true)
+  tags: [ssl]
+
+# =============================================================================
+# Virtual Host Configuration
+# =============================================================================
+- name: Create virtual host configuration
+  ansible.builtin.copy:
+    content: |
+      # =======================================================================
+      # {{ site_name | default('intranet.blue.lab') }} - Corporate Intranet
+      # =======================================================================
+
+      <VirtualHost *:80>
+          ServerName {{ site_name | default('intranet.blue.lab') }}
+          ServerAlias www.{{ site_name | default('intranet.blue.lab') }}
+          DocumentRoot {{ web_root | default('/var/www/html') }}
+
+          # Redirect all HTTP to HTTPS
+          RewriteEngine On
+          RewriteCond %{HTTPS} off
+          RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+          ErrorLog ${APACHE_LOG_DIR}/{{ site_name | default('intranet') }}_error.log
+          CustomLog ${APACHE_LOG_DIR}/{{ site_name | default('intranet') }}_access.log combined
+      </VirtualHost>
+
+      <VirtualHost *:443>
+          ServerName {{ site_name | default('intranet.blue.lab') }}
+          ServerAlias www.{{ site_name | default('intranet.blue.lab') }}
+          DocumentRoot {{ web_root | default('/var/www/html') }}
+
+          SSLEngine on
+          SSLCertificateFile /etc/apache2/ssl/{{ site_name | default('intranet.blue.lab') }}.crt
+          SSLCertificateKeyFile /etc/apache2/ssl/{{ site_name | default('intranet.blue.lab') }}.key
+
+          # Modern SSL configuration
+          SSLProtocol all -SSLv3 -TLSv1 -TLSv1.1
+          SSLCipherSuite ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256
+          SSLHonorCipherOrder off
+
+          <Directory {{ web_root | default('/var/www/html') }}>
+              Options -Indexes +FollowSymLinks
+              AllowOverride All
+              Require all granted
+          </Directory>
+
+          ErrorLog ${APACHE_LOG_DIR}/{{ site_name | default('intranet') }}_ssl_error.log
+          CustomLog ${APACHE_LOG_DIR}/{{ site_name | default('intranet') }}_ssl_access.log combined
+      </VirtualHost>
+    dest: /etc/apache2/sites-available/{{ site_name | default('intranet') }}.conf
+    mode: '0644'
+  become: true
+  notify: restart apache
+  tags: [apache, vhost]
+
+- name: Disable default site
+  ansible.builtin.command: a2dissite 000-default
+  become: true
+  changed_when: true
+  ignore_errors: true
+  tags: [apache]
+
+- name: Enable intranet site
+  ansible.builtin.command: a2ensite {{ site_name | default('intranet') }}
+  become: true
+  changed_when: true
+  notify: restart apache
+  tags: [apache]
+
+# =============================================================================
+# Deploy Sample Intranet Site
+# =============================================================================
+- name: Create web root directory
+  ansible.builtin.file:
+    path: "{{ web_root | default('/var/www/html') }}"
+    state: directory
+    owner: www-data
+    group: www-data
+    mode: '0755'
+  become: true
+  when: deploy_sample_site | default(true)
+  tags: [site]
+
+- name: Deploy sample intranet homepage
+  ansible.builtin.copy:
+    content: |
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>{{ org_name | default('Blue Team Industries') }} - Intranet</title>
+          <style>
+              * { margin: 0; padding: 0; box-sizing: border-box; }
+              body {
+                  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                  background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+                  min-height: 100vh;
+                  color: #333;
+              }
+              .header {
+                  background: rgba(255,255,255,0.95);
+                  padding: 20px;
+                  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+              }
+              .header h1 { color: #1e3c72; }
+              .header p { color: #666; margin-top: 5px; }
+              .container {
+                  max-width: 1200px;
+                  margin: 40px auto;
+                  padding: 0 20px;
+              }
+              .grid {
+                  display: grid;
+                  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+                  gap: 20px;
+              }
+              .card {
+                  background: white;
+                  border-radius: 10px;
+                  padding: 25px;
+                  box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+              }
+              .card h2 {
+                  color: #1e3c72;
+                  margin-bottom: 15px;
+                  border-bottom: 2px solid #2a5298;
+                  padding-bottom: 10px;
+              }
+              .card ul { list-style: none; }
+              .card li {
+                  padding: 8px 0;
+                  border-bottom: 1px solid #eee;
+              }
+              .card a {
+                  color: #2a5298;
+                  text-decoration: none;
+              }
+              .card a:hover { text-decoration: underline; }
+              .announcement {
+                  background: #fff3cd;
+                  border-left: 4px solid #ffc107;
+                  padding: 15px;
+                  margin-bottom: 20px;
+                  border-radius: 0 5px 5px 0;
+              }
+              .footer {
+                  text-align: center;
+                  padding: 20px;
+                  color: rgba(255,255,255,0.8);
+                  margin-top: 40px;
+              }
+          </style>
+      </head>
+      <body>
+          <div class="header">
+              <h1>{{ org_name | default('Blue Team Industries') }}</h1>
+              <p>Corporate Intranet Portal</p>
+          </div>
+
+          <div class="container">
+              <div class="announcement">
+                  <strong>IT Notice:</strong> Please remember to update your passwords regularly and report any suspicious emails to the IT Help Desk.
+              </div>
+
+              <div class="grid">
+                  <div class="card">
+                      <h2>Quick Links</h2>
+                      <ul>
+                          <li><a href="#">Employee Directory</a></li>
+                          <li><a href="#">IT Help Desk Portal</a></li>
+                          <li><a href="#">HR Self-Service</a></li>
+                          <li><a href="#">Expense Reports</a></li>
+                          <li><a href="#">Company Policies</a></li>
+                      </ul>
+                  </div>
+
+                  <div class="card">
+                      <h2>Department Resources</h2>
+                      <ul>
+                          <li><a href="#">Sales Dashboard</a></li>
+                          <li><a href="#">Marketing Materials</a></li>
+                          <li><a href="#">Finance Reports</a></li>
+                          <li><a href="#">IT Documentation</a></li>
+                          <li><a href="#">HR Forms</a></li>
+                      </ul>
+                  </div>
+
+                  <div class="card">
+                      <h2>IT Services</h2>
+                      <ul>
+                          <li><a href="#">Submit IT Ticket</a></li>
+                          <li><a href="#">Password Reset</a></li>
+                          <li><a href="#">Software Request</a></li>
+                          <li><a href="#">VPN Setup Guide</a></li>
+                          <li><a href="#">Security Awareness</a></li>
+                      </ul>
+                  </div>
+
+                  <div class="card">
+                      <h2>Company News</h2>
+                      <ul>
+                          <li>Welcome to our new employees!</li>
+                          <li>Q4 All-Hands Meeting - Friday</li>
+                          <li>Security Training Due This Month</li>
+                          <li>Office Closed for Holiday</li>
+                      </ul>
+                  </div>
+              </div>
+          </div>
+
+          <div class="footer">
+              <p>&copy; 2024 {{ org_name | default('Blue Team Industries') }} - Internal Use Only</p>
+              <p>Contact IT: helpdesk@{{ domain_name | default('blue.lab') }} | Server: {{ inventory_hostname }}</p>
+          </div>
+      </body>
+      </html>
+    dest: "{{ web_root | default('/var/www/html') }}/index.html"
+    owner: www-data
+    group: www-data
+    mode: '0644'
+  become: true
+  when: deploy_sample_site | default(true)
+  tags: [site]
+
+- name: Create PHP info page (for testing)
+  ansible.builtin.copy:
+    content: |
+      <?php
+      // Simple PHP test page
+      echo "<h1>PHP is working!</h1>";
+      echo "<p>Server: " . gethostname() . "</p>";
+      echo "<p>PHP Version: " . phpversion() . "</p>";
+      echo "<p>Server Time: " . date('Y-m-d H:i:s') . "</p>";
+      ?>
+    dest: "{{ web_root | default('/var/www/html') }}/info.php"
+    owner: www-data
+    group: www-data
+    mode: '0644'
+  become: true
+  when:
+    - deploy_sample_site | default(true)
+    - install_php | default(true)
+  tags: [site, php]
+
+# =============================================================================
+# Firewall Configuration
+# =============================================================================
+- name: Configure UFW defaults
+  community.general.ufw:
+    direction: "{{ item.direction }}"
+    policy: "{{ item.policy }}"
+  loop:
+    - { direction: 'incoming', policy: 'deny' }
+    - { direction: 'outgoing', policy: 'allow' }
+  become: true
+  tags: [firewall]
+
+- name: Allow SSH through firewall
+  community.general.ufw:
+    rule: allow
+    port: '22'
+    proto: tcp
+  become: true
+  tags: [firewall]
+
+- name: Allow HTTP through firewall
+  community.general.ufw:
+    rule: allow
+    port: '80'
+    proto: tcp
+  become: true
+  tags: [firewall]
+
+- name: Allow HTTPS through firewall
+  community.general.ufw:
+    rule: allow
+    port: '443'
+    proto: tcp
+  become: true
+  tags: [firewall]
+
+- name: Enable UFW
+  community.general.ufw:
+    state: enabled
+  become: true
+  tags: [firewall]
+
+# =============================================================================
+# Fail2ban Configuration
+# =============================================================================
+- name: Configure fail2ban for Apache
+  ansible.builtin.copy:
+    content: |
+      [apache-auth]
+      enabled = true
+      port = http,https
+      filter = apache-auth
+      logpath = /var/log/apache2/*error.log
+      maxretry = 5
+      bantime = 600
+
+      [apache-badbots]
+      enabled = true
+      port = http,https
+      filter = apache-badbots
+      logpath = /var/log/apache2/*access.log
+      maxretry = 2
+      bantime = 86400
+
+      [apache-noscript]
+      enabled = true
+      port = http,https
+      filter = apache-noscript
+      logpath = /var/log/apache2/*error.log
+      maxretry = 5
+      bantime = 600
+    dest: /etc/fail2ban/jail.d/apache.conf
+    mode: '0644'
+  become: true
+  notify: restart fail2ban
+  tags: [security, fail2ban]
+
+# =============================================================================
+# Log Configuration
+# =============================================================================
+- name: Configure Apache log rotation
+  ansible.builtin.copy:
+    content: |
+      /var/log/apache2/*.log {
+          daily
+          missingok
+          rotate 14
+          compress
+          delaycompress
+          notifempty
+          create 640 root adm
+          sharedscripts
+          postrotate
+              if /etc/init.d/apache2 status > /dev/null ; then
+                  /etc/init.d/apache2 reload > /dev/null
+              fi
+          endscript
+      }
+    dest: /etc/logrotate.d/apache2
+    mode: '0644'
+  become: true
+  tags: [logging]
+
+# =============================================================================
+# Service Management
+# =============================================================================
+- name: Ensure Apache is started and enabled
+  ansible.builtin.systemd:
+    name: apache2
+    state: started
+    enabled: true
+  become: true
+  tags: [service]
+
+- name: Ensure fail2ban is started and enabled
+  ansible.builtin.systemd:
+    name: fail2ban
+    state: started
+    enabled: true
+  become: true
+  tags: [service]
+
+- name: Display completion message
+  ansible.builtin.debug:
+    msg: |
+      Web Server configuration completed on {{ inventory_hostname }}
+      Site URL: https://{{ site_name | default('intranet.blue.lab') }}

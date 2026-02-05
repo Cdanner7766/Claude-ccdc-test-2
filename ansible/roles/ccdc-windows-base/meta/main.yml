@@ -1,0 +1,21 @@
+---
+galaxy_info:
+  author: "CCDC Training Team"
+  description: "Windows base configuration role for CCDC practice environments"
+  license: "MIT"
+  min_ansible_version: "2.10"
+  platforms:
+    - name: Windows
+      versions:
+        - "2019"
+        - "2022"
+        - "10"
+        - "11"
+  galaxy_tags:
+    - windows
+    - security
+    - hardening
+    - active_directory
+    - ccdc
+
+dependencies: []

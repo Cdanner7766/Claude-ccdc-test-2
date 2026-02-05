@@ -1,0 +1,23 @@
+---
+galaxy_info:
+  author: "CCDC Training Team"
+  description: "Linux MySQL/MariaDB database server role for CCDC practice environments"
+  license: "MIT"
+  min_ansible_version: "2.10"
+  platforms:
+    - name: Debian
+      versions:
+        - "11"
+        - "12"
+    - name: Ubuntu
+      versions:
+        - "22.04"
+        - "20.04"
+  galaxy_tags:
+    - linux
+    - database
+    - mysql
+    - mariadb
+    - ccdc
+
+dependencies: []

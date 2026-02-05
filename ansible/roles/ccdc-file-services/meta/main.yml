@@ -1,0 +1,19 @@
+---
+galaxy_info:
+  author: "CCDC Training Team"
+  description: "Windows File Services role for CCDC practice environments"
+  license: "MIT"
+  min_ansible_version: "2.10"
+  platforms:
+    - name: Windows
+      versions:
+        - "2019"
+        - "2022"
+  galaxy_tags:
+    - windows
+    - file_server
+    - smb
+    - shares
+    - ccdc
+
+dependencies: []

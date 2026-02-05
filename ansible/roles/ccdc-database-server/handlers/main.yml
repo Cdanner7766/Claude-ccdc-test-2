@@ -1,0 +1,20 @@
+---
+# Handlers for ccdc-database-server role
+
+- name: restart mysql
+  ansible.builtin.systemd:
+    name: mariadb
+    state: restarted
+  become: true
+
+- name: reload mysql
+  ansible.builtin.systemd:
+    name: mariadb
+    state: reloaded
+  become: true
+
+- name: restart fail2ban
+  ansible.builtin.systemd:
+    name: fail2ban
+    state: restarted
+  become: true

@@ -1,0 +1,300 @@
+---
+# =============================================================================
+# CCDC Windows Base Configuration Role
+# Configures baseline security and creates AD organizational structure
+# =============================================================================
+# This role is designed for Windows Server domain controllers and applies:
+# - Basic security hardening
+# - Audit policy configuration
+# - Organizational Unit creation
+# - Security Group creation
+# - Domain User creation
+# =============================================================================
+
+- name: Display role information
+  ansible.builtin.debug:
+    msg: "Configuring Windows base settings for {{ inventory_hostname }}"
+
+# =============================================================================
+# Security Hardening
+# =============================================================================
+- name: Configure Windows Firewall - Enable for all profiles
+  community.windows.win_firewall:
+    state: enabled
+    profiles:
+      - Domain
+      - Private
+      - Public
+  tags: [security, firewall]
+
+- name: Enable Windows Defender Real-Time Protection
+  ansible.windows.win_powershell:
+    script: |
+      Set-MpPreference -DisableRealtimeMonitoring $false
+      Set-MpPreference -DisableBehaviorMonitoring $false
+      Set-MpPreference -DisableBlockAtFirstSeen $false
+      Set-MpPreference -DisableIOAVProtection $false
+  ignore_errors: true
+  tags: [security, defender]
+
+# =============================================================================
+# Audit Policy Configuration (for Blue Team training)
+# =============================================================================
+- name: Configure Advanced Audit Policies
+  ansible.windows.win_powershell:
+    script: |
+      # Account Logon Events
+      auditpol /set /subcategory:"Credential Validation" /success:enable /failure:enable
+      auditpol /set /subcategory:"Kerberos Authentication Service" /success:enable /failure:enable
+      auditpol /set /subcategory:"Kerberos Service Ticket Operations" /success:enable /failure:enable
+
+      # Account Management
+      auditpol /set /subcategory:"User Account Management" /success:enable /failure:enable
+      auditpol /set /subcategory:"Computer Account Management" /success:enable /failure:enable
+      auditpol /set /subcategory:"Security Group Management" /success:enable /failure:enable
+
+      # Logon/Logoff Events
+      auditpol /set /subcategory:"Logon" /success:enable /failure:enable
+      auditpol /set /subcategory:"Logoff" /success:enable
+      auditpol /set /subcategory:"Special Logon" /success:enable
+
+      # Object Access
+      auditpol /set /subcategory:"File System" /success:enable /failure:enable
+      auditpol /set /subcategory:"Registry" /success:enable /failure:enable
+      auditpol /set /subcategory:"File Share" /success:enable /failure:enable
+
+      # Policy Change
+      auditpol /set /subcategory:"Audit Policy Change" /success:enable /failure:enable
+      auditpol /set /subcategory:"Authentication Policy Change" /success:enable
+
+      # Privilege Use
+      auditpol /set /subcategory:"Sensitive Privilege Use" /success:enable /failure:enable
+
+      # Process Tracking
+      auditpol /set /subcategory:"Process Creation" /success:enable /failure:enable
+
+      # System Events
+      auditpol /set /subcategory:"Security State Change" /success:enable /failure:enable
+      auditpol /set /subcategory:"Security System Extension" /success:enable /failure:enable
+
+      Write-Output "Audit policies configured successfully"
+  when: enable_audit_policies | default(true)
+  tags: [security, audit]
+
+- name: Enable command line logging in process creation events
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Audit
+    name: ProcessCreationIncludeCmdLine_Enabled
+    data: 1
+    type: dword
+  tags: [security, audit]
+
+- name: Enable PowerShell Script Block Logging
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging
+    name: EnableScriptBlockLogging
+    data: 1
+    type: dword
+  tags: [security, audit]
+
+- name: Enable PowerShell Module Logging
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ModuleLogging
+    name: EnableModuleLogging
+    data: 1
+    type: dword
+  tags: [security, audit]
+
+# =============================================================================
+# DNS Logging (Domain Controller Only)
+# =============================================================================
+- name: Enable DNS Debug Logging
+  ansible.windows.win_powershell:
+    script: |
+      # Enable DNS analytical logging
+      Set-DnsServerDiagnostics -All $true
+      Set-DnsServerDiagnostics -EnableLoggingForLocalLookupEvent $true
+      Set-DnsServerDiagnostics -EnableLoggingForPluginDllEvent $true
+      Set-DnsServerDiagnostics -EnableLoggingForRecursiveLookupEvent $true
+      Set-DnsServerDiagnostics -EnableLoggingForRemoteServerEvent $true
+      Set-DnsServerDiagnostics -EnableLoggingForServerStartStopEvent $true
+      Set-DnsServerDiagnostics -EnableLoggingForTombstoneEvent $true
+      Set-DnsServerDiagnostics -EnableLoggingForZoneDataWriteEvent $true
+      Set-DnsServerDiagnostics -EnableLoggingForZoneLoadingEvent $true
+      Write-Output "DNS logging enabled"
+  when: enable_dns_logging | default(false)
+  ignore_errors: true
+  tags: [dns, logging]
+
+# =============================================================================
+# Active Directory Organizational Structure
+# Only runs on Domain Controllers
+# =============================================================================
+- name: Check if this is a Domain Controller
+  ansible.windows.win_powershell:
+    script: |
+      $domainController = (Get-WmiObject Win32_ComputerSystem).DomainRole
+      # 4 = Backup DC, 5 = Primary DC
+      if ($domainController -ge 4) {
+        Write-Output "true"
+      } else {
+        Write-Output "false"
+      }
+  register: is_dc
+  tags: [ad]
+
+- name: Create Organizational Units
+  ansible.windows.win_powershell:
+    script: |
+      $ouPath = "{{ item }}"
+
+      # Parse the OU path to get the name and parent
+      if ($ouPath -match "^OU=([^,]+),(.+)$") {
+        $ouName = $Matches[1]
+        $parentPath = $Matches[2]
+
+        # Check if OU already exists
+        try {
+          $existingOU = Get-ADOrganizationalUnit -Filter "DistinguishedName -eq '$ouPath'" -ErrorAction Stop
+          Write-Output "OU '$ouName' already exists"
+        }
+        catch {
+          # Create the OU
+          try {
+            New-ADOrganizationalUnit -Name $ouName -Path $parentPath -ProtectedFromAccidentalDeletion $false
+            Write-Output "Created OU: $ouName"
+          }
+          catch {
+            Write-Output "Failed to create OU: $ouName - $($_.Exception.Message)"
+          }
+        }
+      }
+  loop: "{{ organizational_units | default([]) }}"
+  when: is_dc.output[0] == "true"
+  ignore_errors: true
+  tags: [ad, ou]
+
+- name: Create Security Groups
+  ansible.windows.win_powershell:
+    script: |
+      $groupName = "{{ item.name }}"
+      $description = "{{ item.description | default('') }}"
+      $ouPath = "{{ item.ou }}"
+
+      # Check if group exists
+      try {
+        $existingGroup = Get-ADGroup -Filter "Name -eq '$groupName'" -ErrorAction Stop
+        Write-Output "Group '$groupName' already exists"
+      }
+      catch {
+        # Create the group
+        try {
+          New-ADGroup -Name $groupName -GroupScope Global -GroupCategory Security -Path $ouPath -Description $description
+          Write-Output "Created group: $groupName"
+        }
+        catch {
+          Write-Output "Failed to create group: $groupName - $($_.Exception.Message)"
+        }
+      }
+  loop: "{{ security_groups | default([]) }}"
+  when: is_dc.output[0] == "true"
+  ignore_errors: true
+  tags: [ad, groups]
+
+- name: Create Domain Users
+  ansible.windows.win_powershell:
+    script: |
+      $username = "{{ item.username }}"
+      $password = ConvertTo-SecureString "{{ item.password }}" -AsPlainText -Force
+      $firstName = "{{ item.first_name }}"
+      $lastName = "{{ item.last_name }}"
+      $displayName = "{{ item.display_name }}"
+      $description = "{{ item.description | default('') }}"
+      $ouPath = "{{ item.ou }}"
+      $groups = @({{ item.groups | map('regex_replace', '^(.*)$', '\"\\1\"') | join(',') }})
+
+      # Check if user exists
+      try {
+        $existingUser = Get-ADUser -Filter "SamAccountName -eq '$username'" -ErrorAction Stop
+        Write-Output "User '$username' already exists"
+      }
+      catch {
+        # Create the user
+        try {
+          New-ADUser -Name $displayName `
+            -SamAccountName $username `
+            -UserPrincipalName "$username@{{ domain_name }}" `
+            -GivenName $firstName `
+            -Surname $lastName `
+            -DisplayName $displayName `
+            -Description $description `
+            -Path $ouPath `
+            -AccountPassword $password `
+            -Enabled $true `
+            -PasswordNeverExpires $true `
+            -ChangePasswordAtLogon $false
+
+          Write-Output "Created user: $username"
+
+          # Add user to groups
+          foreach ($group in $groups) {
+            try {
+              Add-ADGroupMember -Identity $group -Members $username
+              Write-Output "Added $username to group: $group"
+            }
+            catch {
+              Write-Output "Failed to add $username to $group : $($_.Exception.Message)"
+            }
+          }
+        }
+        catch {
+          Write-Output "Failed to create user: $username - $($_.Exception.Message)"
+        }
+      }
+  loop: "{{ domain_users | default([]) }}"
+  when: is_dc.output[0] == "true"
+  ignore_errors: true
+  no_log: false  # Set to true in production to hide passwords
+  tags: [ad, users]
+
+# =============================================================================
+# Windows Event Log Configuration
+# =============================================================================
+- name: Increase Security Event Log Size
+  community.windows.win_eventlog:
+    name: Security
+    maximum_size: 1GB
+    retention_days: 30
+  tags: [logging]
+
+- name: Increase System Event Log Size
+  community.windows.win_eventlog:
+    name: System
+    maximum_size: 256MB
+    retention_days: 30
+  tags: [logging]
+
+- name: Increase Application Event Log Size
+  community.windows.win_eventlog:
+    name: Application
+    maximum_size: 256MB
+    retention_days: 30
+  tags: [logging]
+
+# =============================================================================
+# Time Synchronization
+# =============================================================================
+- name: Configure NTP settings
+  ansible.windows.win_powershell:
+    script: |
+      # Configure Windows Time Service
+      w32tm /config /manualpeerlist:"{{ ntp_server | default('time.windows.com') }}" /syncfromflags:manual /reliable:yes /update
+      Restart-Service w32time
+      w32tm /resync /nowait
+      Write-Output "NTP configured"
+  ignore_errors: true
+  tags: [ntp]
+
+- name: Display completion message
+  ansible.builtin.debug:
+    msg: "Windows base configuration completed for {{ inventory_hostname }}"

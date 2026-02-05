@@ -1,0 +1,336 @@
+# yaml-language-server: $schema=https://docs.ludus.cloud/schemas/range-config.json
+# =============================================================================
+# CCDC Practice Range - Blue Team Business Network
+# Community College Collegiate Cyber Defense Competition Training Environment
+# =============================================================================
+#
+# Network Architecture:
+#   VLAN 10 (10.{{ range_id }}.10.0/24) - Corporate Network
+#     - DC01 (Domain Controller + File Server) - .10
+#     - WEB01 (Ubuntu Web Server)              - .20
+#     - DB01 (Debian Database Server)          - .30
+#     - WS01 (Windows Workstation)             - .50
+#
+# Domain: blue.lab
+# =============================================================================
+
+ludus:
+  # ===========================================================================
+  # Domain Controller (Windows Server 2019)
+  # Primary AD DC with DNS, DHCP, and File Services
+  # ===========================================================================
+  - vm_name: "{{ range_id }}-ad-dc-win2019"
+    hostname: "DC01"
+    template: win2019-server-x64-template
+    vlan: 10
+    ip_last_octet: 10
+    ram_gb: 8
+    cpus: 4
+    windows:
+      sysprep: true
+    domain:
+      fqdn: blue.lab
+      role: primary-dc
+    roles:
+      - ccdc-windows-base
+      - ccdc-file-services
+    role_vars:
+      # File share configuration
+      file_share_name: "SharedFiles"
+      file_share_path: "C:\\Shares\\SharedFiles"
+      file_share_description: "Corporate File Share"
+      # Additional DC features
+      enable_dns_logging: true
+      enable_audit_policies: true
+
+  # ===========================================================================
+  # Web Server (Ubuntu 22.04 LTS)
+  # Apache web server hosting company intranet
+  # ===========================================================================
+  - vm_name: "{{ range_id }}-web-ubuntu"
+    hostname: "WEB01"
+    template: ubuntu-22.04-x64-server-template
+    vlan: 10
+    ip_last_octet: 20
+    ram_gb: 4
+    cpus: 2
+    linux: true
+    roles:
+      - ccdc-web-server
+    role_vars:
+      web_server_type: "apache"
+      web_root: "/var/www/html"
+      enable_ssl: true
+      site_name: "intranet.blue.lab"
+      # Create a simple company intranet
+      deploy_sample_site: true
+
+  # ===========================================================================
+  # Database Server (Debian 12)
+  # MySQL database server for business applications
+  # ===========================================================================
+  - vm_name: "{{ range_id }}-db-debian"
+    hostname: "DB01"
+    template: debian-12-x64-server-template
+    vlan: 10
+    ip_last_octet: 30
+    ram_gb: 4
+    cpus: 2
+    linux: true
+    roles:
+      - ccdc-database-server
+    role_vars:
+      db_type: "mysql"
+      db_root_password: "{{ lookup('password', '/dev/null length=16 chars=ascii_letters,digits') }}"
+      # Application databases to create
+      databases:
+        - name: "inventory"
+          description: "Product inventory system"
+        - name: "employees"
+          description: "HR employee database"
+        - name: "helpdesk"
+          description: "IT helpdesk tickets"
+      # Database users (will be created with limited privileges)
+      db_app_users:
+        - username: "webapp"
+          password: "WebApp2024!"
+          privileges: "SELECT,INSERT,UPDATE,DELETE"
+          database: "inventory"
+        - username: "hrapp"
+          password: "HRApp2024!"
+          privileges: "SELECT,INSERT,UPDATE"
+          database: "employees"
+
+  # ===========================================================================
+  # Windows Workstation (Windows 10 Enterprise)
+  # Standard employee workstation joined to domain
+  # ===========================================================================
+  - vm_name: "{{ range_id }}-ws-win10"
+    hostname: "WS01"
+    template: win10-22h2-x64-enterprise-template
+    vlan: 10
+    ip_last_octet: 50
+    ram_gb: 4
+    cpus: 2
+    windows:
+      sysprep: true
+      install_additional_tools: true
+    domain:
+      fqdn: blue.lab
+      role: member
+    roles:
+      - ccdc-workstation-config
+    role_vars:
+      # Standard business applications
+      install_office_apps: false  # Set true if you have licenses
+      install_browser: true
+      # Map network drives
+      network_drives:
+        - letter: "S"
+          path: "\\\\DC01\\SharedFiles"
+          description: "Shared Files"
+
+# =============================================================================
+# Network Configuration
+# =============================================================================
+network:
+  # Default policies - start restrictive for realistic training
+  inter_vlan_default: ACCEPT  # Single VLAN, so this allows internal traffic
+  external_default: ACCEPT     # Allow internet for updates during setup
+
+  rules:
+    # Allow all internal corporate network traffic
+    - name: "Allow all internal VLAN 10 traffic"
+      vlan_src: 10
+      vlan_dst: 10
+      protocol: all
+      ports: all
+      action: ACCEPT
+
+    # Allow DNS queries to DC
+    - name: "Allow DNS to DC"
+      vlan_src: 10
+      ip_last_octet_dst: 10
+      protocol: udp
+      ports: 53
+      action: ACCEPT
+
+    # Allow web traffic to web server
+    - name: "Allow HTTP/HTTPS to web server"
+      vlan_src: 10
+      ip_last_octet_dst: 20
+      protocol: tcp
+      ports: 80,443
+      action: ACCEPT
+
+    # Allow database connections from web server only
+    - name: "Allow MySQL from web server to DB"
+      vlan_src: 10
+      ip_last_octet_src: 20
+      ip_last_octet_dst: 30
+      protocol: tcp
+      ports: 3306
+      action: ACCEPT
+
+# =============================================================================
+# Default Settings
+# =============================================================================
+defaults:
+  # Snapshot settings for training scenarios
+  snapshot_with_RAM: true
+  stale_hours: 0
+
+  # Active Directory configuration
+  ad_domain_functional_level: "Win2016"
+  ad_forest_functional_level: "Win2016"
+
+  # Domain Administrator account
+  ad_domain_admin: "Administrator"
+  ad_domain_admin_password: "CCDCAdmin2024!"
+
+  # Default domain user (Ludus creates this automatically)
+  ad_domain_user: "domainuser"
+  ad_domain_user_password: "DomainUser2024!"
+
+  # Safe mode recovery password
+  ad_domain_safe_mode_password: "SafeMode2024!"
+
+  # Timezone for all systems
+  timezone: "America/New_York"
+
+# =============================================================================
+# Global Role Variables
+# Passed to ALL Ansible roles on ALL VMs
+# =============================================================================
+global_role_vars:
+  # Domain information
+  domain_name: "blue.lab"
+  domain_netbios: "BLUE"
+
+  # Organization info for certificates and configs
+  org_name: "Blue Team Industries"
+  org_unit: "IT Department"
+
+  # NTP server (uses DC as authoritative time source)
+  ntp_server: "DC01.blue.lab"
+
+  # Syslog server (for future SIEM integration)
+  syslog_server: "10.{{ range_id }}.10.10"
+
+  # Domain Users to create (1 admin + 6 standard users)
+  # These will be created by the ccdc-windows-base role on the DC
+  domain_users:
+    # Domain Administrator (IT Manager)
+    - username: "itmgr"
+      password: "ITManager2024!"
+      first_name: "Alex"
+      last_name: "Thompson"
+      display_name: "Alex Thompson"
+      description: "IT Manager - Domain Administrator"
+      groups:
+        - "Domain Admins"
+        - "Enterprise Admins"
+        - "Administrators"
+      ou: "OU=IT,OU=Staff,DC=blue,DC=lab"
+
+    # Standard Domain Users
+    - username: "jsmith"
+      password: "JSmith2024!"
+      first_name: "John"
+      last_name: "Smith"
+      display_name: "John Smith"
+      description: "Sales Representative"
+      groups:
+        - "Domain Users"
+        - "Sales"
+      ou: "OU=Sales,OU=Staff,DC=blue,DC=lab"
+
+    - username: "mjohnson"
+      password: "MJohnson2024!"
+      first_name: "Maria"
+      last_name: "Johnson"
+      display_name: "Maria Johnson"
+      description: "HR Coordinator"
+      groups:
+        - "Domain Users"
+        - "HR"
+      ou: "OU=HR,OU=Staff,DC=blue,DC=lab"
+
+    - username: "bwilliams"
+      password: "BWilliams2024!"
+      first_name: "Brian"
+      last_name: "Williams"
+      display_name: "Brian Williams"
+      description: "Accountant"
+      groups:
+        - "Domain Users"
+        - "Finance"
+      ou: "OU=Finance,OU=Staff,DC=blue,DC=lab"
+
+    - username: "slee"
+      password: "SLee2024!"
+      first_name: "Sarah"
+      last_name: "Lee"
+      display_name: "Sarah Lee"
+      description: "Help Desk Technician"
+      groups:
+        - "Domain Users"
+        - "IT"
+        - "Help Desk"
+      ou: "OU=IT,OU=Staff,DC=blue,DC=lab"
+
+    - username: "dgarcia"
+      password: "DGarcia2024!"
+      first_name: "David"
+      last_name: "Garcia"
+      display_name: "David Garcia"
+      description: "Marketing Specialist"
+      groups:
+        - "Domain Users"
+        - "Marketing"
+      ou: "OU=Marketing,OU=Staff,DC=blue,DC=lab"
+
+    - username: "kwong"
+      password: "KWong2024!"
+      first_name: "Kevin"
+      last_name: "Wong"
+      display_name: "Kevin Wong"
+      description: "Software Developer"
+      groups:
+        - "Domain Users"
+        - "IT"
+        - "Developers"
+      ou: "OU=IT,OU=Staff,DC=blue,DC=lab"
+
+  # Organizational Units to create
+  organizational_units:
+    - "OU=Staff,DC=blue,DC=lab"
+    - "OU=IT,OU=Staff,DC=blue,DC=lab"
+    - "OU=Sales,OU=Staff,DC=blue,DC=lab"
+    - "OU=HR,OU=Staff,DC=blue,DC=lab"
+    - "OU=Finance,OU=Staff,DC=blue,DC=lab"
+    - "OU=Marketing,OU=Staff,DC=blue,DC=lab"
+
+  # Security Groups to create
+  security_groups:
+    - name: "IT"
+      description: "Information Technology Staff"
+      ou: "OU=Staff,DC=blue,DC=lab"
+    - name: "Sales"
+      description: "Sales Department"
+      ou: "OU=Staff,DC=blue,DC=lab"
+    - name: "HR"
+      description: "Human Resources"
+      ou: "OU=Staff,DC=blue,DC=lab"
+    - name: "Finance"
+      description: "Finance and Accounting"
+      ou: "OU=Staff,DC=blue,DC=lab"
+    - name: "Marketing"
+      description: "Marketing Department"
+      ou: "OU=Staff,DC=blue,DC=lab"
+    - name: "Help Desk"
+      description: "IT Help Desk Staff"
+      ou: "OU=IT,OU=Staff,DC=blue,DC=lab"
+    - name: "Developers"
+      description: "Software Development Team"
+      ou: "OU=IT,OU=Staff,DC=blue,DC=lab"

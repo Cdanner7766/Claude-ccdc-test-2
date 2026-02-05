@@ -1,0 +1,18 @@
+---
+galaxy_info:
+  author: "CCDC Training Team"
+  description: "Windows 10 workstation configuration role for CCDC practice environments"
+  license: "MIT"
+  min_ansible_version: "2.10"
+  platforms:
+    - name: Windows
+      versions:
+        - "10"
+        - "11"
+  galaxy_tags:
+    - windows
+    - workstation
+    - desktop
+    - ccdc
+
+dependencies: []

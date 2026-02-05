@@ -1,0 +1,20 @@
+---
+# Handlers for ccdc-web-server role
+
+- name: restart apache
+  ansible.builtin.systemd:
+    name: apache2
+    state: restarted
+  become: true
+
+- name: reload apache
+  ansible.builtin.systemd:
+    name: apache2
+    state: reloaded
+  become: true
+
+- name: restart fail2ban
+  ansible.builtin.systemd:
+    name: fail2ban
+    state: restarted
+  become: true

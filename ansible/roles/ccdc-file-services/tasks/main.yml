@@ -1,0 +1,292 @@
+---
+# =============================================================================
+# CCDC File Services Role
+# Configures Windows File Server with SMB shares
+# =============================================================================
+# This role sets up:
+# - File Server feature installation
+# - SMB share creation with proper permissions
+# - Sample corporate file structure
+# - Basic DFS if needed
+# =============================================================================
+
+- name: Display role information
+  ansible.builtin.debug:
+    msg: "Configuring File Services on {{ inventory_hostname }}"
+
+# =============================================================================
+# Install File Server Role
+# =============================================================================
+- name: Install File Server Role
+  ansible.windows.win_feature:
+    name: FS-FileServer
+    state: present
+    include_management_tools: true
+  register: fs_install
+  tags: [install]
+
+- name: Install File Server Resource Manager (FSRM)
+  ansible.windows.win_feature:
+    name: FS-Resource-Manager
+    state: present
+    include_management_tools: true
+  tags: [install]
+
+# =============================================================================
+# Create Share Directory Structure
+# =============================================================================
+- name: Create main share directory
+  ansible.windows.win_file:
+    path: "{{ file_share_path | default('C:\\Shares\\SharedFiles') }}"
+    state: directory
+  tags: [shares]
+
+- name: Create departmental subdirectories
+  ansible.windows.win_file:
+    path: "{{ file_share_path | default('C:\\Shares\\SharedFiles') }}\\{{ item }}"
+    state: directory
+  loop:
+    - IT
+    - HR
+    - Finance
+    - Sales
+    - Marketing
+    - Public
+  tags: [shares]
+
+- name: Create IT subdirectories
+  ansible.windows.win_file:
+    path: "{{ file_share_path | default('C:\\Shares\\SharedFiles') }}\\IT\\{{ item }}"
+    state: directory
+  loop:
+    - Documentation
+    - Software
+    - Scripts
+    - Backups
+  tags: [shares]
+
+# =============================================================================
+# Create SMB Share
+# =============================================================================
+- name: Create main SMB share
+  ansible.windows.win_powershell:
+    script: |
+      $shareName = "{{ file_share_name | default('SharedFiles') }}"
+      $sharePath = "{{ file_share_path | default('C:\\Shares\\SharedFiles') }}"
+      $description = "{{ file_share_description | default('Corporate File Share') }}"
+
+      # Check if share exists
+      $existingShare = Get-SmbShare -Name $shareName -ErrorAction SilentlyContinue
+
+      if ($existingShare) {
+        Write-Output "Share '$shareName' already exists"
+      }
+      else {
+        # Create the share
+        New-SmbShare -Name $shareName -Path $sharePath -Description $description -FullAccess "Domain Admins" -ChangeAccess "Domain Users" -ReadAccess "Everyone"
+        Write-Output "Created share: $shareName"
+      }
+  tags: [shares]
+
+- name: Create departmental shares
+  ansible.windows.win_powershell:
+    script: |
+      $depts = @("IT", "HR", "Finance", "Sales", "Marketing")
+      $basePath = "{{ file_share_path | default('C:\\Shares\\SharedFiles') }}"
+
+      foreach ($dept in $depts) {
+        $shareName = "$dept`$"  # Hidden share
+        $sharePath = "$basePath\$dept"
+
+        $existingShare = Get-SmbShare -Name $shareName -ErrorAction SilentlyContinue
+
+        if (-not $existingShare) {
+          New-SmbShare -Name $shareName -Path $sharePath -Description "$dept Department Share" -FullAccess "Domain Admins", "$dept"
+          Write-Output "Created share: $shareName"
+        }
+        else {
+          Write-Output "Share '$shareName' already exists"
+        }
+      }
+  tags: [shares]
+
+# =============================================================================
+# Configure NTFS Permissions
+# =============================================================================
+- name: Configure NTFS permissions on share root
+  ansible.windows.win_powershell:
+    script: |
+      $sharePath = "{{ file_share_path | default('C:\\Shares\\SharedFiles') }}"
+
+      # Reset and configure permissions
+      $acl = Get-Acl $sharePath
+
+      # Remove inheritance and copy existing permissions
+      $acl.SetAccessRuleProtection($true, $true)
+
+      # Add Domain Users - Read & Execute
+      $domainUsers = New-Object System.Security.AccessControl.FileSystemAccessRule("{{ domain_netbios | default('BLUE') }}\Domain Users", "ReadAndExecute", "ContainerInherit,ObjectInherit", "None", "Allow")
+      $acl.AddAccessRule($domainUsers)
+
+      # Add Domain Admins - Full Control
+      $domainAdmins = New-Object System.Security.AccessControl.FileSystemAccessRule("{{ domain_netbios | default('BLUE') }}\Domain Admins", "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow")
+      $acl.AddAccessRule($domainAdmins)
+
+      Set-Acl $sharePath $acl
+      Write-Output "NTFS permissions configured on $sharePath"
+  tags: [permissions]
+
+- name: Configure departmental folder permissions
+  ansible.windows.win_powershell:
+    script: |
+      $basePath = "{{ file_share_path | default('C:\\Shares\\SharedFiles') }}"
+      $deptPath = "$basePath\{{ item }}"
+      $deptGroup = "{{ item }}"
+      $domainNetbios = "{{ domain_netbios | default('BLUE') }}"
+
+      # Get current ACL
+      $acl = Get-Acl $deptPath
+
+      # Disable inheritance and copy existing rules
+      $acl.SetAccessRuleProtection($true, $true)
+
+      # Remove all non-inherited permissions
+      $acl.Access | Where-Object { -not $_.IsInherited } | ForEach-Object {
+        $acl.RemoveAccessRule($_) | Out-Null
+      }
+
+      # Add SYSTEM - Full Control
+      $system = New-Object System.Security.AccessControl.FileSystemAccessRule("SYSTEM", "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow")
+      $acl.AddAccessRule($system)
+
+      # Add Administrators - Full Control
+      $admins = New-Object System.Security.AccessControl.FileSystemAccessRule("BUILTIN\Administrators", "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow")
+      $acl.AddAccessRule($admins)
+
+      # Add Domain Admins - Full Control
+      $domainAdmins = New-Object System.Security.AccessControl.FileSystemAccessRule("$domainNetbios\Domain Admins", "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow")
+      $acl.AddAccessRule($domainAdmins)
+
+      # Add Department Group - Modify
+      try {
+        $deptGroupRule = New-Object System.Security.AccessControl.FileSystemAccessRule("$domainNetbios\$deptGroup", "Modify", "ContainerInherit,ObjectInherit", "None", "Allow")
+        $acl.AddAccessRule($deptGroupRule)
+      }
+      catch {
+        Write-Output "Warning: Could not add group $deptGroup - may not exist yet"
+      }
+
+      Set-Acl $deptPath $acl
+      Write-Output "Permissions configured for $deptPath"
+  loop:
+    - IT
+    - HR
+    - Finance
+    - Sales
+    - Marketing
+  ignore_errors: true
+  tags: [permissions]
+
+- name: Configure Public folder - all users can write
+  ansible.windows.win_powershell:
+    script: |
+      $publicPath = "{{ file_share_path | default('C:\\Shares\\SharedFiles') }}\Public"
+      $domainNetbios = "{{ domain_netbios | default('BLUE') }}"
+
+      $acl = Get-Acl $publicPath
+      $acl.SetAccessRuleProtection($true, $true)
+
+      # SYSTEM - Full Control
+      $system = New-Object System.Security.AccessControl.FileSystemAccessRule("SYSTEM", "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow")
+      $acl.AddAccessRule($system)
+
+      # Administrators - Full Control
+      $admins = New-Object System.Security.AccessControl.FileSystemAccessRule("BUILTIN\Administrators", "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow")
+      $acl.AddAccessRule($admins)
+
+      # Domain Users - Modify (read/write)
+      $domainUsers = New-Object System.Security.AccessControl.FileSystemAccessRule("$domainNetbios\Domain Users", "Modify", "ContainerInherit,ObjectInherit", "None", "Allow")
+      $acl.AddAccessRule($domainUsers)
+
+      Set-Acl $publicPath $acl
+      Write-Output "Public folder permissions configured"
+  tags: [permissions]
+
+# =============================================================================
+# Create Sample Files for Training
+# =============================================================================
+- name: Create sample readme in Public folder
+  ansible.windows.win_copy:
+    content: |
+      ================================================================================
+      Blue Team Industries - Public File Share
+      ================================================================================
+
+      Welcome to the corporate file share!
+
+      This is the public folder where all employees can share files.
+      Please follow company policy when storing files here.
+
+      For department-specific files, please use your department's folder.
+
+      Questions? Contact the IT Help Desk at helpdesk@blue.lab
+
+      ================================================================================
+    dest: "{{ file_share_path | default('C:\\Shares\\SharedFiles') }}\\Public\\README.txt"
+  tags: [samples]
+
+- name: Create IT documentation sample
+  ansible.windows.win_copy:
+    content: |
+      ================================================================================
+      IT Department - Internal Documentation
+      ================================================================================
+
+      Network Information:
+      - Domain: {{ domain_name | default('blue.lab') }}
+      - Domain Controller: DC01.{{ domain_name | default('blue.lab') }}
+      - Web Server: WEB01.{{ domain_name | default('blue.lab') }}
+      - Database Server: DB01.{{ domain_name | default('blue.lab') }}
+
+      Important Contacts:
+      - IT Manager: Alex Thompson (itmgr@{{ domain_name | default('blue.lab') }})
+      - Help Desk: Sarah Lee (slee@{{ domain_name | default('blue.lab') }})
+
+      ================================================================================
+      CONFIDENTIAL - IT DEPARTMENT USE ONLY
+      ================================================================================
+    dest: "{{ file_share_path | default('C:\\Shares\\SharedFiles') }}\\IT\\Documentation\\network-info.txt"
+  tags: [samples]
+
+# =============================================================================
+# Configure File Server Resource Manager (Optional)
+# =============================================================================
+- name: Configure FSRM file screening (block executables in shares)
+  ansible.windows.win_powershell:
+    script: |
+      # Enable file screening to block executables (common security practice)
+      Import-Module FileServerResourceManager
+
+      # Check if file group exists
+      $fileGroup = Get-FsrmFileGroup -Name "Executable Files" -ErrorAction SilentlyContinue
+
+      if (-not $fileGroup) {
+        New-FsrmFileGroup -Name "Executable Files" -IncludePattern @("*.exe", "*.com", "*.bat", "*.cmd", "*.ps1", "*.vbs", "*.js")
+        Write-Output "Created file group: Executable Files"
+      }
+
+      # Create file screen template
+      $template = Get-FsrmFileScreenTemplate -Name "Block Executables" -ErrorAction SilentlyContinue
+
+      if (-not $template) {
+        New-FsrmFileScreenTemplate -Name "Block Executables" -IncludeGroup "Executable Files" -Active:$false
+        Write-Output "Created file screen template: Block Executables"
+      }
+
+      Write-Output "FSRM configuration complete (screening disabled by default)"
+  ignore_errors: true
+  tags: [fsrm]
+
+- name: Display completion message
+  ansible.builtin.debug:
+    msg: "File Services configuration completed on {{ inventory_hostname }}"

@@ -1,0 +1,374 @@
+---
+# =============================================================================
+# CCDC Workstation Configuration Role (Windows 10)
+# Configures domain-joined Windows 10 workstation
+# =============================================================================
+# This role sets up:
+# - Basic security configuration
+# - Network drive mappings
+# - Browser installation
+# - Standard business applications
+# - User environment configuration
+# =============================================================================
+
+- name: Display role information
+  ansible.builtin.debug:
+    msg: "Configuring Workstation on {{ inventory_hostname }}"
+
+# =============================================================================
+# Security Configuration
+# =============================================================================
+- name: Configure Windows Firewall - Enable for all profiles
+  community.windows.win_firewall:
+    state: enabled
+    profiles:
+      - Domain
+      - Private
+      - Public
+  tags: [security, firewall]
+
+- name: Enable Windows Defender Real-Time Protection
+  ansible.windows.win_powershell:
+    script: |
+      Set-MpPreference -DisableRealtimeMonitoring $false
+      Set-MpPreference -DisableBehaviorMonitoring $false
+      Set-MpPreference -DisableBlockAtFirstSeen $false
+      Set-MpPreference -DisableIOAVProtection $false
+      Write-Output "Windows Defender configured"
+  ignore_errors: true
+  tags: [security, defender]
+
+- name: Configure audit policies for workstation
+  ansible.windows.win_powershell:
+    script: |
+      # Logon/Logoff Events
+      auditpol /set /subcategory:"Logon" /success:enable /failure:enable
+      auditpol /set /subcategory:"Logoff" /success:enable
+      auditpol /set /subcategory:"Special Logon" /success:enable
+
+      # Object Access
+      auditpol /set /subcategory:"File System" /success:enable /failure:enable
+      auditpol /set /subcategory:"Removable Storage" /success:enable /failure:enable
+
+      # Process Tracking
+      auditpol /set /subcategory:"Process Creation" /success:enable /failure:enable
+
+      # Policy Change
+      auditpol /set /subcategory:"Audit Policy Change" /success:enable /failure:enable
+
+      Write-Output "Audit policies configured"
+  tags: [security, audit]
+
+- name: Enable command line logging in process creation events
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Audit
+    name: ProcessCreationIncludeCmdLine_Enabled
+    data: 1
+    type: dword
+  tags: [security, audit]
+
+- name: Enable PowerShell Script Block Logging
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging
+    name: EnableScriptBlockLogging
+    data: 1
+    type: dword
+  tags: [security, audit]
+
+# =============================================================================
+# Event Log Configuration
+# =============================================================================
+- name: Increase Security Event Log Size
+  community.windows.win_eventlog:
+    name: Security
+    maximum_size: 512MB
+    retention_days: 30
+  tags: [logging]
+
+- name: Increase System Event Log Size
+  community.windows.win_eventlog:
+    name: System
+    maximum_size: 128MB
+    retention_days: 30
+  tags: [logging]
+
+- name: Increase Application Event Log Size
+  community.windows.win_eventlog:
+    name: Application
+    maximum_size: 128MB
+    retention_days: 30
+  tags: [logging]
+
+# =============================================================================
+# Network Drive Mapping (via Group Policy Preferences simulation)
+# =============================================================================
+- name: Create network drive mapping script
+  ansible.windows.win_copy:
+    content: |
+      # Network Drive Mapping Script
+      # Runs at user logon to map network drives
+
+      # Map S: drive to shared files
+      $sharePath = "\\{{ network_drives[0].path | default('\\\\DC01\\SharedFiles') | regex_replace('\\\\\\\\', '\\') }}"
+      $driveLetter = "{{ network_drives[0].letter | default('S') }}:"
+
+      # Remove existing mapping if present
+      if (Test-Path $driveLetter) {
+          Remove-PSDrive -Name "{{ network_drives[0].letter | default('S') }}" -Force -ErrorAction SilentlyContinue
+          net use $driveLetter /delete /y 2>$null
+      }
+
+      # Create new mapping
+      try {
+          net use $driveLetter $sharePath /persistent:yes
+          Write-Output "Successfully mapped $driveLetter to $sharePath"
+      }
+      catch {
+          Write-Output "Failed to map drive: $($_.Exception.Message)"
+      }
+    dest: C:\Scripts\MapDrives.ps1
+  when: network_drives is defined and network_drives | length > 0
+  tags: [network]
+
+- name: Create Scripts directory
+  ansible.windows.win_file:
+    path: C:\Scripts
+    state: directory
+  tags: [network]
+
+- name: Create scheduled task for drive mapping at logon
+  ansible.windows.win_powershell:
+    script: |
+      $taskName = "MapNetworkDrives"
+      $scriptPath = "C:\Scripts\MapDrives.ps1"
+
+      # Check if task exists
+      $existingTask = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+
+      if (-not $existingTask) {
+          $action = New-ScheduledTaskAction -Execute "PowerShell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`""
+          $trigger = New-ScheduledTaskTrigger -AtLogOn
+          $principal = New-ScheduledTaskPrincipal -GroupId "Users" -RunLevel Limited
+          $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+
+          Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Description "Map network drives at logon"
+          Write-Output "Created scheduled task: $taskName"
+      }
+      else {
+          Write-Output "Scheduled task already exists: $taskName"
+      }
+  when: network_drives is defined and network_drives | length > 0
+  tags: [network]
+
+# =============================================================================
+# Browser Installation
+# =============================================================================
+- name: Install Google Chrome
+  ansible.windows.win_powershell:
+    script: |
+      $chromeInstaller = "C:\Temp\ChromeSetup.exe"
+
+      # Create temp directory
+      New-Item -ItemType Directory -Path "C:\Temp" -Force | Out-Null
+
+      # Download Chrome installer
+      try {
+          $webClient = New-Object System.Net.WebClient
+          $webClient.DownloadFile("https://dl.google.com/chrome/install/latest/chrome_installer.exe", $chromeInstaller)
+
+          # Install Chrome silently
+          Start-Process -FilePath $chromeInstaller -ArgumentList "/silent", "/install" -Wait
+          Write-Output "Google Chrome installed successfully"
+      }
+      catch {
+          Write-Output "Failed to install Chrome: $($_.Exception.Message)"
+      }
+      finally {
+          # Cleanup
+          if (Test-Path $chromeInstaller) {
+              Remove-Item $chromeInstaller -Force
+          }
+      }
+  when: install_browser | default(true)
+  ignore_errors: true
+  tags: [software]
+
+# =============================================================================
+# Sysmon Installation (for security monitoring)
+# =============================================================================
+- name: Download Sysmon
+  ansible.windows.win_powershell:
+    script: |
+      $sysmonZip = "C:\Temp\Sysmon.zip"
+      $sysmonDir = "C:\Program Files\Sysmon"
+
+      # Create directories
+      New-Item -ItemType Directory -Path "C:\Temp" -Force | Out-Null
+      New-Item -ItemType Directory -Path $sysmonDir -Force | Out-Null
+
+      # Download Sysmon
+      try {
+          $webClient = New-Object System.Net.WebClient
+          $webClient.DownloadFile("https://download.sysinternals.com/files/Sysmon.zip", $sysmonZip)
+
+          # Extract
+          Expand-Archive -Path $sysmonZip -DestinationPath $sysmonDir -Force
+          Write-Output "Sysmon downloaded and extracted"
+      }
+      catch {
+          Write-Output "Failed to download Sysmon: $($_.Exception.Message)"
+      }
+  ignore_errors: true
+  tags: [security, sysmon]
+
+- name: Create Sysmon configuration
+  ansible.windows.win_copy:
+    content: |
+      <Sysmon schemaversion="4.90">
+        <HashAlgorithms>md5,sha256,IMPHASH</HashAlgorithms>
+        <EventFiltering>
+          <!-- Process Creation -->
+          <RuleGroup name="ProcessCreate" groupRelation="or">
+            <ProcessCreate onmatch="include">
+              <Image condition="end with">cmd.exe</Image>
+              <Image condition="end with">powershell.exe</Image>
+              <Image condition="end with">wscript.exe</Image>
+              <Image condition="end with">cscript.exe</Image>
+              <Image condition="end with">mshta.exe</Image>
+              <Image condition="end with">regsvr32.exe</Image>
+              <Image condition="end with">rundll32.exe</Image>
+            </ProcessCreate>
+          </RuleGroup>
+
+          <!-- Network Connections -->
+          <RuleGroup name="NetworkConnect" groupRelation="or">
+            <NetworkConnect onmatch="include">
+              <DestinationPort condition="is">445</DestinationPort>
+              <DestinationPort condition="is">3389</DestinationPort>
+              <DestinationPort condition="is">5985</DestinationPort>
+              <DestinationPort condition="is">5986</DestinationPort>
+            </NetworkConnect>
+          </RuleGroup>
+
+          <!-- File Creation -->
+          <RuleGroup name="FileCreate" groupRelation="or">
+            <FileCreate onmatch="include">
+              <TargetFilename condition="end with">.exe</TargetFilename>
+              <TargetFilename condition="end with">.dll</TargetFilename>
+              <TargetFilename condition="end with">.ps1</TargetFilename>
+              <TargetFilename condition="end with">.bat</TargetFilename>
+              <TargetFilename condition="end with">.cmd</TargetFilename>
+            </FileCreate>
+          </RuleGroup>
+
+          <!-- Registry Events -->
+          <RuleGroup name="RegistryEvent" groupRelation="or">
+            <RegistryEvent onmatch="include">
+              <TargetObject condition="contains">Run</TargetObject>
+              <TargetObject condition="contains">RunOnce</TargetObject>
+            </RegistryEvent>
+          </RuleGroup>
+        </EventFiltering>
+      </Sysmon>
+    dest: "C:\\Program Files\\Sysmon\\sysmon-config.xml"
+  ignore_errors: true
+  tags: [security, sysmon]
+
+- name: Install and configure Sysmon
+  ansible.windows.win_powershell:
+    script: |
+      $sysmon64 = "C:\Program Files\Sysmon\Sysmon64.exe"
+      $sysmonConfig = "C:\Program Files\Sysmon\sysmon-config.xml"
+
+      if (Test-Path $sysmon64) {
+          # Check if Sysmon is already installed
+          $sysmonService = Get-Service -Name Sysmon64 -ErrorAction SilentlyContinue
+
+          if (-not $sysmonService) {
+              # Install Sysmon
+              & $sysmon64 -accepteula -i $sysmonConfig
+              Write-Output "Sysmon installed and configured"
+          }
+          else {
+              # Update configuration
+              & $sysmon64 -c $sysmonConfig
+              Write-Output "Sysmon configuration updated"
+          }
+      }
+      else {
+          Write-Output "Sysmon executable not found"
+      }
+  ignore_errors: true
+  tags: [security, sysmon]
+
+# =============================================================================
+# Desktop Shortcuts and User Environment
+# =============================================================================
+- name: Create Public Desktop shortcuts
+  ansible.windows.win_shortcut:
+    src: "{{ item.target }}"
+    dest: "C:\\Users\\Public\\Desktop\\{{ item.name }}.lnk"
+    description: "{{ item.description }}"
+    icon: "{{ item.icon | default(item.target + ',0') }}"
+  loop:
+    - name: "Shared Files"
+      target: "\\\\DC01\\SharedFiles"
+      description: "Corporate File Share"
+      icon: "shell32.dll,3"
+    - name: "Company Intranet"
+      target: "https://intranet.blue.lab"
+      description: "Blue Team Industries Intranet"
+      icon: "shell32.dll,13"
+  ignore_errors: true
+  tags: [desktop]
+
+# =============================================================================
+# Windows Update Configuration
+# =============================================================================
+- name: Configure Windows Update for security updates
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU
+    name: "{{ item.name }}"
+    data: "{{ item.value }}"
+    type: dword
+  loop:
+    - { name: 'NoAutoUpdate', value: 0 }           # Enable automatic updates
+    - { name: 'AUOptions', value: 3 }              # Download and notify for install
+    - { name: 'ScheduledInstallDay', value: 0 }    # Every day
+    - { name: 'ScheduledInstallTime', value: 3 }   # 3 AM
+  tags: [updates]
+
+# =============================================================================
+# Time Synchronization
+# =============================================================================
+- name: Configure NTP to use domain controller
+  ansible.windows.win_powershell:
+    script: |
+      # Configure Windows Time Service to sync with DC
+      w32tm /config /syncfromflags:domhier /update
+      Restart-Service w32time
+      w32tm /resync /nowait
+      Write-Output "Time synchronization configured"
+  ignore_errors: true
+  tags: [ntp]
+
+# =============================================================================
+# Final Configuration
+# =============================================================================
+- name: Set workstation description
+  ansible.windows.win_powershell:
+    script: |
+      $description = "CCDC Training Workstation - {{ org_name | default('Blue Team Industries') }}"
+      $computer = Get-WmiObject Win32_OperatingSystem
+      $computer.Description = $description
+      $computer.Put() | Out-Null
+      Write-Output "Computer description set"
+  ignore_errors: true
+  tags: [config]
+
+- name: Display completion message
+  ansible.builtin.debug:
+    msg: |
+      Workstation configuration completed on {{ inventory_hostname }}
+      Domain: {{ domain_name | default('blue.lab') }}
+      Network Drive: S: -> \\DC01\SharedFiles
