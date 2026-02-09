@@ -236,120 +236,81 @@ global_role_vars:
   # Syslog server (for future SIEM integration)
   syslog_server: "10.{{ range_id }}.10.10"
 
-  # Domain Users to create (1 admin + 6 standard users)
-  # These will be created by the ccdc-windows-base role on the DC
-  domain_users:
-    # Domain Administrator (IT Manager)
-    - username: "itmgr"
-      password: "ITManager2024!"
-      first_name: "Alex"
-      last_name: "Thompson"
-      display_name: "Alex Thompson"
-      description: "IT Manager - Domain Administrator"
-      groups:
-        - "Domain Admins"
-        - "Enterprise Admins"
-        - "Administrators"
-      ou: "OU=IT,OU=Staff,DC=blue,DC=lab"
+  # Ludus default accounts:
+  # - BLUE\Administrator : CCDCAdmin2024!
+  # - BLUE\domainuser : DomainUser2024!
+  # - localuser : password (local account on all VMs)
 
-    # Standard Domain Users
+  # Additional domain users (created in CN=Users for simplicity)
+  domain_users:
+    # VULNERABLE: Weak password user
     - username: "jsmith"
-      password: "JSmith2024!"
+      password: "Password1"
       first_name: "John"
       last_name: "Smith"
-      display_name: "John Smith"
-      description: "Sales Representative"
-      groups:
-        - "Domain Users"
-        - "Sales"
-      ou: "OU=Sales,OU=Staff,DC=blue,DC=lab"
+      description: "Sales Manager"
 
+    # VULNERABLE: Weak password user
     - username: "mjohnson"
-      password: "MJohnson2024!"
-      first_name: "Maria"
+      password: "Summer2024"
+      first_name: "Mary"
       last_name: "Johnson"
-      display_name: "Maria Johnson"
-      description: "HR Coordinator"
+      description: "HR Manager"
+
+    # VULNERABLE: Service account with weak password and admin rights
+    - username: "svc_backup"
+      password: "backup"
+      first_name: "Backup"
+      last_name: "Service"
+      description: "Backup Service Account"
       groups:
-        - "Domain Users"
-        - "HR"
-      ou: "OU=HR,OU=Staff,DC=blue,DC=lab"
+        - "Domain Admins"
+
+    # VULNERABLE: Helpdesk with admin rights
+    - username: "helpdesk"
+      password: "Help123!"
+      first_name: "Help"
+      last_name: "Desk"
+      description: "IT Helpdesk"
+      groups:
+        - "Domain Admins"
 
     - username: "bwilliams"
-      password: "BWilliams2024!"
+      password: "Bwilliams2024!"
       first_name: "Brian"
       last_name: "Williams"
-      display_name: "Brian Williams"
       description: "Accountant"
-      groups:
-        - "Domain Users"
-        - "Finance"
-      ou: "OU=Finance,OU=Staff,DC=blue,DC=lab"
 
     - username: "slee"
-      password: "SLee2024!"
+      password: "Slee2024!"
       first_name: "Sarah"
       last_name: "Lee"
-      display_name: "Sarah Lee"
-      description: "Help Desk Technician"
-      groups:
-        - "Domain Users"
-        - "IT"
-        - "Help Desk"
-      ou: "OU=IT,OU=Staff,DC=blue,DC=lab"
+      description: "Developer"
 
     - username: "dgarcia"
-      password: "DGarcia2024!"
+      password: "Dgarcia2024!"
       first_name: "David"
       last_name: "Garcia"
-      display_name: "David Garcia"
-      description: "Marketing Specialist"
-      groups:
-        - "Domain Users"
-        - "Marketing"
-      ou: "OU=Marketing,OU=Staff,DC=blue,DC=lab"
+      description: "Marketing"
 
     - username: "kwong"
-      password: "KWong2024!"
+      password: "Kwong2024!"
       first_name: "Kevin"
       last_name: "Wong"
-      display_name: "Kevin Wong"
-      description: "Software Developer"
+      description: "IT Support"
+
+    # VULNERABLE: Password same as username
+    - username: "admin"
+      password: "admin"
+      first_name: "Admin"
+      last_name: "User"
+      description: "Admin Account"
       groups:
-        - "Domain Users"
-        - "IT"
-        - "Developers"
-      ou: "OU=IT,OU=Staff,DC=blue,DC=lab"
+        - "Domain Admins"
 
-  # Organizational Units to create
-  organizational_units:
-    - "OU=Staff,DC=blue,DC=lab"
-    - "OU=IT,OU=Staff,DC=blue,DC=lab"
-    - "OU=Sales,OU=Staff,DC=blue,DC=lab"
-    - "OU=HR,OU=Staff,DC=blue,DC=lab"
-    - "OU=Finance,OU=Staff,DC=blue,DC=lab"
-    - "OU=Marketing,OU=Staff,DC=blue,DC=lab"
-
-  # Security Groups to create
-  security_groups:
-    - name: "IT"
-      description: "Information Technology Staff"
-      ou: "OU=Staff,DC=blue,DC=lab"
-    - name: "Sales"
-      description: "Sales Department"
-      ou: "OU=Staff,DC=blue,DC=lab"
-    - name: "HR"
-      description: "Human Resources"
-      ou: "OU=Staff,DC=blue,DC=lab"
-    - name: "Finance"
-      description: "Finance and Accounting"
-      ou: "OU=Staff,DC=blue,DC=lab"
-    - name: "Marketing"
-      description: "Marketing Department"
-      ou: "OU=Staff,DC=blue,DC=lab"
-    - name: "Help Desk"
-      description: "IT Help Desk Staff"
-      ou: "OU=IT,OU=Staff,DC=blue,DC=lab"
-    - name: "Developers"
-      description: "Software Development Team"
-      ou: "OU=IT,OU=Staff,DC=blue,DC=lab"
+    # VULNERABLE: Common password
+    - username: "guest"
+      password: "guest"
+      first_name: "Guest"
+      last_name: "User"
+      description: "Guest Account"
