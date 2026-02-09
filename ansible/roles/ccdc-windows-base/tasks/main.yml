@@ -378,6 +378,7 @@
 
 # =============================================================================
 # Create Domain Users (same as secure version)
+# Uses CN=Users as fallback if custom OU doesn't exist
 # =============================================================================
 - name: Create Domain Users
   ansible.windows.win_powershell:
@@ -388,8 +389,23 @@
       $lastName = "{{ item.last_name }}"
       $displayName = "{{ item.display_name }}"
       $description = "{{ item.description | default('') }}"
-      $ouPath = "{{ item.ou }}"
+      $preferredOuPath = "{{ item.ou }}"
       $groups = @({{ item.groups | map('regex_replace', '^(.*)$', '\"\\1\"') | join(',') }})
+
+      # Get domain DN
+      $domainDN = (Get-ADDomain).DistinguishedName
+      $defaultUsersPath = "CN=Users,$domainDN"
+
+      # Try preferred OU, fall back to CN=Users if it doesn't exist
+      $ouPath = $defaultUsersPath
+      try {
+        $testOU = Get-ADOrganizationalUnit -Identity $preferredOuPath -ErrorAction Stop
+        $ouPath = $preferredOuPath
+        Write-Output "Using OU: $ouPath"
+      }
+      catch {
+        Write-Output "OU '$preferredOuPath' not found, using default: $defaultUsersPath"
+      }
 
       try {
         $existingUser = Get-ADUser -Filter "SamAccountName -eq '$username'" -ErrorAction Stop
@@ -410,7 +426,7 @@
             -PasswordNeverExpires $true `
             -ChangePasswordAtLogon $false
 
-          Write-Output "Created user: $username"
+          Write-Output "Created user: $username in $ouPath"
 
           foreach ($group in $groups) {
             try {
@@ -418,12 +434,12 @@
               Write-Output "Added $username to group: $group"
             }
             catch {
-              Write-Output "Failed to add $username to $group : $($_.Exception.Message)"
+              Write-Output "Warning: Failed to add $username to $group : $($_.Exception.Message)"
             }
           }
         }
         catch {
-          Write-Output "Failed to create user: $username - $($_.Exception.Message)"
+          Write-Output "ERROR: Failed to create user: $username - $($_.Exception.Message)"
         }
       }
   loop: "{{ domain_users | default([]) }}"
