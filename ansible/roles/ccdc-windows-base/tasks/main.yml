@@ -377,35 +377,21 @@
   tags: [ad, groups]
 
 # =============================================================================
-# Create Domain Users (same as secure version)
-# Uses CN=Users as fallback if custom OU doesn't exist
+# Create Domain Users (simplified - all users in CN=Users)
 # =============================================================================
 - name: Create Domain Users
   ansible.windows.win_powershell:
     script: |
       $username = "{{ item.username }}"
       $password = ConvertTo-SecureString "{{ item.password }}" -AsPlainText -Force
-      $firstName = "{{ item.first_name }}"
-      $lastName = "{{ item.last_name }}"
-      $displayName = "{{ item.display_name }}"
+      $firstName = "{{ item.first_name | default(item.username) }}"
+      $lastName = "{{ item.last_name | default('User') }}"
+      $displayName = "$firstName $lastName"
       $description = "{{ item.description | default('') }}"
-      $preferredOuPath = "{{ item.ou }}"
-      $groups = @({{ item.groups | map('regex_replace', '^(.*)$', '\"\\1\"') | join(',') }})
 
-      # Get domain DN
+      # Get domain DN and use CN=Users
       $domainDN = (Get-ADDomain).DistinguishedName
-      $defaultUsersPath = "CN=Users,$domainDN"
-
-      # Try preferred OU, fall back to CN=Users if it doesn't exist
-      $ouPath = $defaultUsersPath
-      try {
-        $testOU = Get-ADOrganizationalUnit -Identity $preferredOuPath -ErrorAction Stop
-        $ouPath = $preferredOuPath
-        Write-Output "Using OU: $ouPath"
-      }
-      catch {
-        Write-Output "OU '$preferredOuPath' not found, using default: $defaultUsersPath"
-      }
+      $usersPath = "CN=Users,$domainDN"
 
       try {
         $existingUser = Get-ADUser -Filter "SamAccountName -eq '$username'" -ErrorAction Stop
@@ -420,32 +406,44 @@
             -Surname $lastName `
             -DisplayName $displayName `
             -Description $description `
-            -Path $ouPath `
+            -Path $usersPath `
             -AccountPassword $password `
             -Enabled $true `
             -PasswordNeverExpires $true `
             -ChangePasswordAtLogon $false
 
-          Write-Output "Created user: $username in $ouPath"
-
-          foreach ($group in $groups) {
-            try {
-              Add-ADGroupMember -Identity $group -Members $username
-              Write-Output "Added $username to group: $group"
-            }
-            catch {
-              Write-Output "Warning: Failed to add $username to $group : $($_.Exception.Message)"
-            }
-          }
+          Write-Output "Created user: $username"
         }
         catch {
-          Write-Output "ERROR: Failed to create user: $username - $($_.Exception.Message)"
+          Write-Output "ERROR: Failed to create user $username : $($_.Exception.Message)"
         }
       }
   loop: "{{ domain_users | default([]) }}"
   when: is_dc.output[0] == "true"
   ignore_errors: true
-  no_log: false
+  tags: [ad, users]
+
+# Add users to groups (separate task for reliability)
+- name: Add users to groups
+  ansible.windows.win_powershell:
+    script: |
+      $username = "{{ item.username }}"
+      $groups = @({{ item.groups | default([]) | map('regex_replace', '^(.*)$', '\"\\1\"') | join(',') }})
+
+      foreach ($group in $groups) {
+        if ($group -ne "") {
+          try {
+            Add-ADGroupMember -Identity $group -Members $username -ErrorAction Stop
+            Write-Output "Added $username to $group"
+          }
+          catch {
+            Write-Output "Warning: Could not add $username to $group"
+          }
+        }
+      }
+  loop: "{{ domain_users | default([]) }}"
+  when: is_dc.output[0] == "true" and item.groups is defined
+  ignore_errors: true
   tags: [ad, users]
 
 # =============================================================================
