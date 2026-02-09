@@ -18,3 +18,10 @@
     name: fail2ban
     state: restarted
   become: true
+  ignore_errors: true
+
+- name: restart ssh
+  ansible.builtin.systemd:
+    name: ssh
+    state: restarted
+  become: true

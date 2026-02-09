@@ -1,7 +1,10 @@
 # yaml-language-server: $schema=https://docs.ludus.cloud/schemas/range-config.json
 # =============================================================================
-# CCDC Practice Range - Blue Team Business Network
+# CCDC Practice Range - VULNERABLE VERSION
 # Community College Collegiate Cyber Defense Competition Training Environment
+# =============================================================================
+# WARNING: This configuration INTENTIONALLY introduces security vulnerabilities
+# for blue team training purposes. DO NOT use in production!
 # =============================================================================
 #
 # Network Architecture:

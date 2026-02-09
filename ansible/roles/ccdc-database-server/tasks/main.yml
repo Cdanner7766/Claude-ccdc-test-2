@@ -1,19 +1,29 @@
 ---
 # =============================================================================
-# CCDC Database Server Role (Linux/Debian)
-# Configures MySQL/MariaDB database server
+# CCDC Database Server Role (Linux/Debian) - VULNERABLE VERSION
 # =============================================================================
-# This role sets up:
-# - MySQL/MariaDB server installation
-# - Security hardening
-# - Sample databases for training
-# - Application user accounts
-# - Firewall configuration
+# WARNING: This role INTENTIONALLY introduces security vulnerabilities
+# for blue team training purposes. DO NOT use in production!
+#
+# Vulnerabilities introduced:
+# - V-DB-001: MySQL root accessible remotely with weak password
+# - V-DB-002: Anonymous MySQL user enabled
+# - V-DB-003: Test database present
+# - V-DB-004: MySQL running with elevated privileges
+# - V-DB-005: No firewall restrictions
+# - V-DB-006: General query log exposed
+# - V-DB-007: Backup files world-readable
+# - V-DB-008: Weak application user passwords
+# - V-DB-009: Excessive user privileges
+# - V-DB-010: Weak SSH configuration
+# - V-DB-011: MySQL credentials in world-readable files
+# - V-DB-012: Sensitive data in unencrypted tables
+# - V-DB-013: No fail2ban protection
 # =============================================================================
 
 - name: Display role information
   ansible.builtin.debug:
-    msg: "Configuring Database Server on {{ inventory_hostname }}"
+    msg: "Configuring VULNERABLE Database Server on {{ inventory_hostname }}"
 
 # =============================================================================
 # System Updates and Package Installation
@@ -32,13 +42,8 @@
       - mariadb-client
       - python3-mysqldb
       - python3-pymysql
-      - ufw
-      - fail2ban
-      - logwatch
-      - unattended-upgrades
     state: present
   become: true
-  when: db_type | default('mysql') in ['mysql', 'mariadb']
   tags: [install]
 
 # =============================================================================
@@ -53,126 +58,136 @@
   tags: [service]
 
 # =============================================================================
-# MySQL Security Hardening
+# V-DB-001: Set Weak Root Password and Allow Remote Access
 # =============================================================================
-- name: Set root password
+- name: "VULN V-DB-001: Set weak root password"
   community.mysql.mysql_user:
     name: root
     host: localhost
-    password: "{{ db_root_password | default('RootPassword2024!') }}"
+    password: "root"
     login_unix_socket: /var/run/mysqld/mysqld.sock
     state: present
   become: true
   ignore_errors: true
-  tags: [security]
+  tags: [vulnerability, mysql]
 
-- name: Create .my.cnf for root user
-  ansible.builtin.copy:
-    content: |
-      [client]
-      user=root
-      password={{ db_root_password | default('RootPassword2024!') }}
-    dest: /root/.my.cnf
-    mode: '0600'
-    owner: root
-    group: root
-  become: true
-  tags: [security]
-
-- name: Remove anonymous MySQL users
-  community.mysql.mysql_user:
-    name: ''
-    host_all: true
-    state: absent
-    login_unix_socket: /var/run/mysqld/mysqld.sock
-  become: true
-  ignore_errors: true
-  tags: [security]
-
-- name: Remove test database
-  community.mysql.mysql_db:
-    name: test
-    state: absent
-    login_unix_socket: /var/run/mysqld/mysqld.sock
-  become: true
-  ignore_errors: true
-  tags: [security]
-
-- name: Disallow root login remotely
+- name: "VULN V-DB-001: Allow root login from any host"
   community.mysql.mysql_user:
     name: root
-    host: "{{ item }}"
-    state: absent
-    login_unix_socket: /var/run/mysqld/mysqld.sock
-  loop:
-    - "{{ ansible_hostname }}"
-    - "127.0.0.1"
-    - "::1"
-    - "%"
-  become: true
-  ignore_errors: true
-  tags: [security]
-
-- name: Ensure root can login locally
-  community.mysql.mysql_user:
-    name: root
-    host: localhost
-    password: "{{ db_root_password | default('RootPassword2024!') }}"
+    host: "%"
+    password: "root"
     priv: "*.*:ALL,GRANT"
     login_unix_socket: /var/run/mysqld/mysqld.sock
     state: present
   become: true
   ignore_errors: true
-  tags: [security]
+  tags: [vulnerability, mysql]
+
+- name: "VULN V-DB-011: Create world-readable .my.cnf"
+  ansible.builtin.copy:
+    content: |
+      [client]
+      user=root
+      password=root
+    dest: /root/.my.cnf
+    mode: '0644'  # VULNERABLE: World-readable
+    owner: root
+    group: root
+  become: true
+  tags: [vulnerability, credentials]
+
+- name: "VULN V-DB-011: Create credentials file in /tmp"
+  ansible.builtin.copy:
+    content: |
+      # MySQL Credentials - For automated scripts
+      MYSQL_ROOT_PASSWORD=root
+      MYSQL_USER=webapp
+      MYSQL_PASSWORD=WebApp2024!
+      MYSQL_HOST=localhost
+    dest: /tmp/mysql_credentials.txt
+    mode: '0644'
+  become: true
+  tags: [vulnerability, credentials]
 
 # =============================================================================
-# MySQL Configuration
+# V-DB-002: Keep Anonymous User
 # =============================================================================
-- name: Configure MySQL server settings
+- name: "VULN V-DB-002: Create anonymous MySQL user"
+  community.mysql.mysql_user:
+    name: ''
+    host: localhost
+    password: ''
+    priv: '*.*:SELECT'
+    login_unix_socket: /var/run/mysqld/mysqld.sock
+    state: present
+  become: true
+  ignore_errors: true
+  tags: [vulnerability, mysql]
+
+- name: "VULN V-DB-002: Create anonymous user from any host"
+  community.mysql.mysql_user:
+    name: ''
+    host: "%"
+    password: ''
+    priv: 'test.*:ALL'
+    login_unix_socket: /var/run/mysqld/mysqld.sock
+    state: present
+  become: true
+  ignore_errors: true
+  tags: [vulnerability, mysql]
+
+# =============================================================================
+# V-DB-003: Keep Test Database
+# =============================================================================
+- name: "VULN V-DB-003: Create test database"
+  community.mysql.mysql_db:
+    name: test
+    state: present
+    login_unix_socket: /var/run/mysqld/mysqld.sock
+  become: true
+  ignore_errors: true
+  tags: [vulnerability, mysql]
+
+# =============================================================================
+# V-DB-004: Insecure MySQL Configuration
+# =============================================================================
+- name: "VULN V-DB-004: Configure insecure MySQL settings"
   ansible.builtin.copy:
     content: |
       # =======================================================================
-      # MySQL/MariaDB Configuration - CCDC Training Environment
+      # MySQL/MariaDB Configuration - VULNERABLE
       # =======================================================================
 
       [mysqld]
-      # Basic Settings
       datadir=/var/lib/mysql
       socket=/var/run/mysqld/mysqld.sock
       user=mysql
-      symbolic-links=0
+      symbolic-links=1
 
-      # Network Settings
+      # VULNERABLE: Bind to all interfaces
       bind-address=0.0.0.0
       port=3306
 
-      # Character Set
       character-set-server=utf8mb4
       collation-server=utf8mb4_unicode_ci
 
-      # Performance Settings
-      max_connections=100
-      max_allowed_packet=64M
-      thread_cache_size=8
-      query_cache_size=16M
-      query_cache_type=1
+      max_connections=500
+      max_allowed_packet=256M
 
-      # InnoDB Settings
-      innodb_buffer_pool_size=256M
-      innodb_log_file_size=64M
-      innodb_flush_log_at_trx_commit=1
-
-      # Logging (important for security monitoring)
+      # VULNERABLE: Query logging enabled and accessible
       log_error=/var/log/mysql/error.log
       general_log_file=/var/log/mysql/general.log
-      general_log=0
+      general_log=1
       slow_query_log=1
       slow_query_log_file=/var/log/mysql/slow.log
-      long_query_time=2
+      long_query_time=1
 
-      # Security Settings
-      local_infile=0
-      skip_symbolic_links=yes
+      # VULNERABLE: Insecure settings
+      local_infile=1
+      skip-grant-tables=0
+
+      # VULNERABLE: No SSL required
+      ssl=0
 
       [mysql]
       default-character-set=utf8mb4
@@ -183,102 +198,94 @@
     mode: '0644'
   become: true
   notify: restart mysql
-  tags: [config]
+  tags: [vulnerability, config]
+
+# =============================================================================
+# V-DB-006: Make Logs World-Readable
+# =============================================================================
+- name: "VULN V-DB-006: Set weak permissions on MySQL logs"
+  ansible.builtin.file:
+    path: /var/log/mysql
+    state: directory
+    mode: '0755'
+    recurse: yes
+  become: true
+  ignore_errors: true
+  tags: [vulnerability, logging]
 
 # =============================================================================
 # Create Application Databases
 # =============================================================================
 - name: Create application databases
   community.mysql.mysql_db:
-    name: "{{ item.name }}"
+    name: "{{ item }}"
     state: present
     encoding: utf8mb4
     collation: utf8mb4_unicode_ci
     login_unix_socket: /var/run/mysqld/mysqld.sock
-  loop: "{{ databases | default([]) }}"
+  loop:
+    - inventory
+    - employees
+    - helpdesk
+    - secrets
   become: true
   tags: [databases]
 
 # =============================================================================
-# Create Application Users
+# V-DB-008/009: Create Users with Weak Passwords and Excessive Privileges
 # =============================================================================
-- name: Create database application users
+- name: "VULN V-DB-008: Create webapp user with weak password"
   community.mysql.mysql_user:
-    name: "{{ item.username }}"
+    name: webapp
     host: "%"
-    password: "{{ item.password }}"
-    priv: "{{ item.database }}.*:{{ item.privileges }}"
+    password: "webapp"
+    priv: "*.*:ALL"
+    login_unix_socket: /var/run/mysqld/mysqld.sock
     state: present
-    login_unix_socket: /var/run/mysqld/mysqld.sock
-  loop: "{{ db_app_users | default([]) }}"
-  become: true
-  no_log: false  # Set to true in production
-  tags: [users]
-
-# =============================================================================
-# Create Sample Data for Training
-# =============================================================================
-- name: Create inventory database tables
-  community.mysql.mysql_query:
-    login_unix_socket: /var/run/mysqld/mysqld.sock
-    login_db: inventory
-    query:
-      - |
-        CREATE TABLE IF NOT EXISTS products (
-          id INT AUTO_INCREMENT PRIMARY KEY,
-          name VARCHAR(255) NOT NULL,
-          description TEXT,
-          price DECIMAL(10,2),
-          quantity INT DEFAULT 0,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-        )
-      - |
-        CREATE TABLE IF NOT EXISTS categories (
-          id INT AUTO_INCREMENT PRIMARY KEY,
-          name VARCHAR(100) NOT NULL,
-          description TEXT
-        )
-      - |
-        CREATE TABLE IF NOT EXISTS suppliers (
-          id INT AUTO_INCREMENT PRIMARY KEY,
-          name VARCHAR(255) NOT NULL,
-          contact_email VARCHAR(255),
-          phone VARCHAR(20),
-          address TEXT
-        )
   become: true
   ignore_errors: true
-  tags: [data]
+  tags: [vulnerability, users]
 
-- name: Insert sample inventory data
-  community.mysql.mysql_query:
+- name: "VULN V-DB-008: Create hrapp user with weak password"
+  community.mysql.mysql_user:
+    name: hrapp
+    host: "%"
+    password: "hrapp"
+    priv: "*.*:ALL"
     login_unix_socket: /var/run/mysqld/mysqld.sock
-    login_db: inventory
-    query:
-      - |
-        INSERT IGNORE INTO categories (id, name, description) VALUES
-        (1, 'Electronics', 'Electronic devices and accessories'),
-        (2, 'Office Supplies', 'General office supplies'),
-        (3, 'Furniture', 'Office furniture'),
-        (4, 'Software', 'Software licenses')
-      - |
-        INSERT IGNORE INTO products (id, name, description, price, quantity) VALUES
-        (1, 'Laptop Dell XPS 15', 'Business laptop', 1299.99, 25),
-        (2, 'Monitor 27 inch', '4K Monitor', 399.99, 50),
-        (3, 'Keyboard Wireless', 'Ergonomic keyboard', 79.99, 100),
-        (4, 'Mouse Wireless', 'Ergonomic mouse', 49.99, 150),
-        (5, 'Desk Standing', 'Adjustable standing desk', 599.99, 20)
-      - |
-        INSERT IGNORE INTO suppliers (id, name, contact_email, phone) VALUES
-        (1, 'TechSupply Corp', 'sales@techsupply.example', '555-0100'),
-        (2, 'Office Depot', 'business@officedepot.example', '555-0200'),
-        (3, 'Furniture World', 'orders@furnitureworld.example', '555-0300')
+    state: present
   become: true
   ignore_errors: true
-  tags: [data]
+  tags: [vulnerability, users]
 
-- name: Create employees database tables
+- name: "VULN V-DB-008: Create backup user with simple password"
+  community.mysql.mysql_user:
+    name: backup
+    host: "%"
+    password: "backup123"
+    priv: "*.*:ALL,GRANT"
+    login_unix_socket: /var/run/mysqld/mysqld.sock
+    state: present
+  become: true
+  ignore_errors: true
+  tags: [vulnerability, users]
+
+- name: "VULN V-DB-009: Create admin user with excessive privileges"
+  community.mysql.mysql_user:
+    name: admin
+    host: "%"
+    password: "admin"
+    priv: "*.*:ALL,GRANT"
+    login_unix_socket: /var/run/mysqld/mysqld.sock
+    state: present
+  become: true
+  ignore_errors: true
+  tags: [vulnerability, users]
+
+# =============================================================================
+# Create Sample Data
+# =============================================================================
+- name: Create and populate tables
   community.mysql.mysql_query:
     login_unix_socket: /var/run/mysqld/mysqld.sock
     login_db: employees
@@ -287,7 +294,6 @@
         CREATE TABLE IF NOT EXISTS departments (
           id INT AUTO_INCREMENT PRIMARY KEY,
           name VARCHAR(100) NOT NULL,
-          manager_id INT,
           budget DECIMAL(12,2)
         )
       - |
@@ -299,27 +305,9 @@
           department_id INT,
           hire_date DATE,
           salary DECIMAL(10,2),
+          ssn VARCHAR(11),
           FOREIGN KEY (department_id) REFERENCES departments(id)
         )
-      - |
-        CREATE TABLE IF NOT EXISTS time_off (
-          id INT AUTO_INCREMENT PRIMARY KEY,
-          employee_id INT,
-          start_date DATE,
-          end_date DATE,
-          type ENUM('vacation', 'sick', 'personal'),
-          status ENUM('pending', 'approved', 'denied'),
-          FOREIGN KEY (employee_id) REFERENCES employees(id)
-        )
-  become: true
-  ignore_errors: true
-  tags: [data]
-
-- name: Insert sample employee data
-  community.mysql.mysql_query:
-    login_unix_socket: /var/run/mysqld/mysqld.sock
-    login_db: employees
-    query:
       - |
         INSERT IGNORE INTO departments (id, name, budget) VALUES
         (1, 'Information Technology', 500000.00),
@@ -328,121 +316,95 @@
         (4, 'Marketing', 300000.00),
         (5, 'Finance', 400000.00)
       - |
-        INSERT IGNORE INTO employees (id, first_name, last_name, email, department_id, hire_date, salary) VALUES
-        (1, 'Alex', 'Thompson', 'itmgr@blue.lab', 1, '2020-01-15', 95000.00),
-        (2, 'John', 'Smith', 'jsmith@blue.lab', 3, '2021-03-20', 65000.00),
-        (3, 'Maria', 'Johnson', 'mjohnson@blue.lab', 2, '2019-08-10', 70000.00),
-        (4, 'Brian', 'Williams', 'bwilliams@blue.lab', 5, '2022-02-01', 72000.00),
-        (5, 'Sarah', 'Lee', 'slee@blue.lab', 1, '2023-01-10', 55000.00),
-        (6, 'David', 'Garcia', 'dgarcia@blue.lab', 4, '2021-11-15', 60000.00),
-        (7, 'Kevin', 'Wong', 'kwong@blue.lab', 1, '2022-06-01', 85000.00)
+        INSERT IGNORE INTO employees (id, first_name, last_name, email, department_id, hire_date, salary, ssn) VALUES
+        (1, 'Alex', 'Thompson', 'itmgr@blue.lab', 1, '2020-01-15', 95000.00, '123-45-6789'),
+        (2, 'John', 'Smith', 'jsmith@blue.lab', 3, '2021-03-20', 65000.00, '234-56-7890'),
+        (3, 'Maria', 'Johnson', 'mjohnson@blue.lab', 2, '2019-08-10', 70000.00, '345-67-8901'),
+        (4, 'Brian', 'Williams', 'bwilliams@blue.lab', 5, '2022-02-01', 72000.00, '456-78-9012'),
+        (5, 'Sarah', 'Lee', 'slee@blue.lab', 1, '2023-01-10', 55000.00, '567-89-0123'),
+        (6, 'David', 'Garcia', 'dgarcia@blue.lab', 4, '2021-11-15', 60000.00, '678-90-1234'),
+        (7, 'Kevin', 'Wong', 'kwong@blue.lab', 1, '2022-06-01', 85000.00, '789-01-2345')
   become: true
   ignore_errors: true
   tags: [data]
 
-- name: Create helpdesk database tables
+# =============================================================================
+# V-DB-012: Create Secrets Database with Sensitive Data
+# =============================================================================
+- name: "VULN V-DB-012: Create secrets table with sensitive data"
   community.mysql.mysql_query:
     login_unix_socket: /var/run/mysqld/mysqld.sock
-    login_db: helpdesk
+    login_db: secrets
     query:
       - |
-        CREATE TABLE IF NOT EXISTS tickets (
+        CREATE TABLE IF NOT EXISTS credentials (
           id INT AUTO_INCREMENT PRIMARY KEY,
-          title VARCHAR(255) NOT NULL,
-          description TEXT,
-          status ENUM('open', 'in_progress', 'resolved', 'closed') DEFAULT 'open',
-          priority ENUM('low', 'medium', 'high', 'critical') DEFAULT 'medium',
-          requester_email VARCHAR(100),
-          assigned_to VARCHAR(100),
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+          service VARCHAR(100),
+          username VARCHAR(100),
+          password VARCHAR(100),
+          notes TEXT
         )
       - |
-        CREATE TABLE IF NOT EXISTS ticket_comments (
-          id INT AUTO_INCREMENT PRIMARY KEY,
-          ticket_id INT,
-          author VARCHAR(100),
-          comment TEXT,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY (ticket_id) REFERENCES tickets(id)
-        )
-  become: true
-  ignore_errors: true
-  tags: [data]
-
-- name: Insert sample helpdesk data
-  community.mysql.mysql_query:
-    login_unix_socket: /var/run/mysqld/mysqld.sock
-    login_db: helpdesk
-    query:
+        INSERT IGNORE INTO credentials (id, service, username, password, notes) VALUES
+        (1, 'Domain Admin', 'itmgr', 'ITManager2024!', 'Primary domain admin account'),
+        (2, 'AWS Console', 'admin@blue.lab', 'AWSAdmin2024!', 'Production AWS account'),
+        (3, 'Azure Portal', 'admin@blue.lab', 'AzureAdmin2024!', 'Azure subscription'),
+        (4, 'Backup Service', 'svc_backup', 'admin', 'Backup service account'),
+        (5, 'VPN', 'vpnadmin', 'VPNAccess2024!', 'VPN administrator'),
+        (6, 'Firewall', 'fwadmin', 'FirewallAdmin!', 'Firewall management'),
+        (7, 'SSH Key Passphrase', 'root', 'RootSSHKey2024', 'Root SSH key passphrase')
       - |
-        INSERT IGNORE INTO tickets (id, title, description, status, priority, requester_email, assigned_to) VALUES
-        (1, 'Cannot access file share', 'Getting access denied when trying to access S: drive', 'open', 'medium', 'jsmith@blue.lab', 'slee@blue.lab'),
-        (2, 'New laptop setup', 'Need new laptop configured for new employee', 'in_progress', 'high', 'mjohnson@blue.lab', 'slee@blue.lab'),
-        (3, 'Password reset request', 'Forgot password, need reset', 'resolved', 'low', 'bwilliams@blue.lab', 'slee@blue.lab'),
-        (4, 'Printer not working', 'Marketing printer showing offline', 'open', 'medium', 'dgarcia@blue.lab', NULL),
-        (5, 'Software installation request', 'Need Adobe Creative Suite installed', 'open', 'low', 'dgarcia@blue.lab', NULL)
+        CREATE TABLE IF NOT EXISTS api_keys (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          service VARCHAR(100),
+          api_key VARCHAR(255),
+          secret_key VARCHAR(255)
+        )
+      - |
+        INSERT IGNORE INTO api_keys (id, service, api_key, secret_key) VALUES
+        (1, 'Stripe', 'sk_live_123456789', 'whsec_abcdefghij'),
+        (2, 'SendGrid', 'SG.abc123xyz', 'not_applicable'),
+        (3, 'AWS', 'AKIAIOSFODNN7EXAMPLE', 'wJalrXUtnFEMI/K7MDENG/bPxRfiCY'),
+        (4, 'Slack', 'xoxb-123456789', 'webhook_secret_123')
   become: true
   ignore_errors: true
-  tags: [data]
+  tags: [vulnerability, data]
 
 # =============================================================================
-# Firewall Configuration
+# V-DB-005: Disable Firewall
 # =============================================================================
-- name: Configure UFW defaults
+- name: "VULN V-DB-005: Disable UFW firewall"
   community.general.ufw:
-    direction: "{{ item.direction }}"
-    policy: "{{ item.policy }}"
-  loop:
-    - { direction: 'incoming', policy: 'deny' }
-    - { direction: 'outgoing', policy: 'allow' }
+    state: disabled
   become: true
-  tags: [firewall]
-
-- name: Allow SSH through firewall
-  community.general.ufw:
-    rule: allow
-    port: '22'
-    proto: tcp
-  become: true
-  tags: [firewall]
-
-- name: Allow MySQL from internal network only
-  community.general.ufw:
-    rule: allow
-    port: '3306'
-    proto: tcp
-    src: '10.0.0.0/8'
-  become: true
-  tags: [firewall]
-
-- name: Enable UFW
-  community.general.ufw:
-    state: enabled
-  become: true
-  tags: [firewall]
+  ignore_errors: true
+  tags: [vulnerability, firewall]
 
 # =============================================================================
-# Fail2ban Configuration
+# V-DB-010: Weak SSH Configuration
 # =============================================================================
-- name: Configure fail2ban for MySQL
+- name: "VULN V-DB-010: Configure weak SSH settings"
   ansible.builtin.copy:
     content: |
-      [mysqld-auth]
-      enabled = true
-      port = 3306
-      filter = mysqld-auth
-      logpath = /var/log/mysql/error.log
-      maxretry = 5
-      bantime = 600
-    dest: /etc/fail2ban/jail.d/mysql.conf
+      # VULNERABLE SSH Configuration
+      Port 22
+      PermitRootLogin yes
+      PasswordAuthentication yes
+      PermitEmptyPasswords yes
+      ChallengeResponseAuthentication no
+      UsePAM yes
+      X11Forwarding yes
+      PrintMotd no
+      AcceptEnv LANG LC_*
+      Subsystem sftp /usr/lib/openssh/sftp-server
+    dest: /etc/ssh/sshd_config
     mode: '0644'
   become: true
-  notify: restart fail2ban
-  tags: [security]
+  notify: restart ssh
+  tags: [vulnerability, ssh]
 
 # =============================================================================
-# Backup Configuration
+# V-DB-007: Create World-Readable Backup
 # =============================================================================
 - name: Create backup directory
   ansible.builtin.file:
@@ -450,48 +412,46 @@
     state: directory
     owner: root
     group: root
-    mode: '0700'
+    mode: '0755'  # VULNERABLE: World-readable
   become: true
-  tags: [backup]
+  tags: [vulnerability, backup]
 
-- name: Create MySQL backup script
+- name: "VULN V-DB-007: Create backup script with embedded credentials"
   ansible.builtin.copy:
     content: |
       #!/bin/bash
-      # MySQL Backup Script - CCDC Training Environment
-      # Runs daily via cron
+      # MySQL Backup Script
+      # VULNERABLE: Credentials embedded
 
+      MYSQL_USER="root"
+      MYSQL_PASS="root"
       BACKUP_DIR="/var/backups/mysql"
-      DATE=$(date +%Y%m%d_%H%M%S)
-      RETENTION_DAYS=7
 
-      # Backup all databases
-      mysqldump --all-databases --single-transaction --quick --lock-tables=false > "$BACKUP_DIR/all_databases_$DATE.sql"
-
-      # Compress backup
-      gzip "$BACKUP_DIR/all_databases_$DATE.sql"
-
-      # Remove old backups
-      find "$BACKUP_DIR" -name "*.sql.gz" -mtime +$RETENTION_DAYS -delete
-
-      echo "Backup completed: all_databases_$DATE.sql.gz"
+      mysqldump -u$MYSQL_USER -p$MYSQL_PASS --all-databases > "$BACKUP_DIR/all_databases_$(date +%Y%m%d).sql"
+      chmod 644 "$BACKUP_DIR"/*.sql
     dest: /usr/local/bin/mysql-backup.sh
-    mode: '0700'
+    mode: '0755'  # VULNERABLE: World-readable with credentials
   become: true
-  tags: [backup]
+  tags: [vulnerability, backup]
 
-- name: Schedule daily MySQL backup
-  ansible.builtin.cron:
-    name: "Daily MySQL backup"
-    minute: "0"
-    hour: "2"
-    job: "/usr/local/bin/mysql-backup.sh >> /var/log/mysql-backup.log 2>&1"
+- name: "VULN V-DB-007: Create sample backup file"
+  ansible.builtin.copy:
+    content: |
+      -- MySQL Backup
+      -- VULNERABLE: Backup file in accessible location
+
+      CREATE DATABASE IF NOT EXISTS secrets;
+      USE secrets;
+
+      INSERT INTO credentials VALUES (1, 'Domain Admin', 'itmgr', 'ITManager2024!', 'Admin');
+      INSERT INTO credentials VALUES (2, 'Root', 'root', 'root', 'MySQL root');
+
+      -- More sensitive data here
+    dest: /var/backups/mysql/all_databases_latest.sql
+    mode: '0644'
   become: true
-  tags: [backup]
+  tags: [vulnerability, backup]
 
 - name: Display completion message
   ansible.builtin.debug:
-    msg: |
-      Database Server configuration completed on {{ inventory_hostname }}
-      MySQL Port: 3306
-      Databases created: inventory, employees, helpdesk
+    msg: "VULNERABLE Database Server configuration completed on {{ inventory_hostname }}"

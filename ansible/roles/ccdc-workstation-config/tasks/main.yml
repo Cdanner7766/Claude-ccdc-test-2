@@ -1,374 +1,367 @@
 ---
 # =============================================================================
-# CCDC Workstation Configuration Role (Windows 10)
-# Configures domain-joined Windows 10 workstation
+# CCDC Workstation Configuration Role (Windows 10) - VULNERABLE VERSION
 # =============================================================================
-# This role sets up:
-# - Basic security configuration
-# - Network drive mappings
-# - Browser installation
-# - Standard business applications
-# - User environment configuration
+# WARNING: This role INTENTIONALLY introduces security vulnerabilities
+# for blue team training purposes. DO NOT use in production!
+#
+# Vulnerabilities introduced:
+# - V-WS-001: Windows Firewall disabled
+# - V-WS-002: Windows Defender disabled
+# - V-WS-003: Audit policies disabled
+# - V-WS-004: UAC disabled
+# - V-WS-005: SMBv1 enabled
+# - V-WS-006: Local admin with weak password
+# - V-WS-007: AutoRun enabled
+# - V-WS-008: Remote Desktop with weak NLA
+# - V-WS-009: Stored credentials in browser
+# - V-WS-010: PowerShell logging disabled
+# - V-WS-011: No Sysmon installed
+# - V-WS-012: Unnecessary services running
+# - V-WS-013: Weak screen lock settings
+# - V-WS-014: Sensitive files on desktop
 # =============================================================================
 
 - name: Display role information
   ansible.builtin.debug:
-    msg: "Configuring Workstation on {{ inventory_hostname }}"
+    msg: "Configuring VULNERABLE Workstation on {{ inventory_hostname }}"
 
 # =============================================================================
-# Security Configuration
+# V-WS-001: Disable Windows Firewall
 # =============================================================================
-- name: Configure Windows Firewall - Enable for all profiles
+- name: "VULN V-WS-001: Disable Windows Firewall for all profiles"
   community.windows.win_firewall:
-    state: enabled
+    state: disabled
     profiles:
       - Domain
       - Private
       - Public
-  tags: [security, firewall]
+  tags: [vulnerability, firewall]
 
-- name: Enable Windows Defender Real-Time Protection
+# =============================================================================
+# V-WS-002: Disable Windows Defender
+# =============================================================================
+- name: "VULN V-WS-002: Disable Windows Defender"
   ansible.windows.win_powershell:
     script: |
-      Set-MpPreference -DisableRealtimeMonitoring $false
-      Set-MpPreference -DisableBehaviorMonitoring $false
-      Set-MpPreference -DisableBlockAtFirstSeen $false
-      Set-MpPreference -DisableIOAVProtection $false
-      Write-Output "Windows Defender configured"
+      Set-MpPreference -DisableRealtimeMonitoring $true
+      Set-MpPreference -DisableBehaviorMonitoring $true
+      Set-MpPreference -DisableBlockAtFirstSeen $true
+      Set-MpPreference -DisableIOAVProtection $true
+      Set-MpPreference -DisableScriptScanning $true
+      Set-MpPreference -SubmitSamplesConsent 2
+      Write-Output "Windows Defender disabled"
   ignore_errors: true
-  tags: [security, defender]
+  tags: [vulnerability, defender]
 
-- name: Configure audit policies for workstation
+# =============================================================================
+# V-WS-003: Disable Audit Policies
+# =============================================================================
+- name: "VULN V-WS-003: Disable all audit policies"
   ansible.windows.win_powershell:
     script: |
-      # Logon/Logoff Events
-      auditpol /set /subcategory:"Logon" /success:enable /failure:enable
-      auditpol /set /subcategory:"Logoff" /success:enable
-      auditpol /set /subcategory:"Special Logon" /success:enable
+      auditpol /set /subcategory:"Logon" /success:disable /failure:disable
+      auditpol /set /subcategory:"Logoff" /success:disable /failure:disable
+      auditpol /set /subcategory:"Special Logon" /success:disable /failure:disable
+      auditpol /set /subcategory:"File System" /success:disable /failure:disable
+      auditpol /set /subcategory:"Process Creation" /success:disable /failure:disable
+      auditpol /set /subcategory:"Audit Policy Change" /success:disable /failure:disable
+      Write-Output "Audit policies disabled"
+  tags: [vulnerability, audit]
 
-      # Object Access
-      auditpol /set /subcategory:"File System" /success:enable /failure:enable
-      auditpol /set /subcategory:"Removable Storage" /success:enable /failure:enable
-
-      # Process Tracking
-      auditpol /set /subcategory:"Process Creation" /success:enable /failure:enable
-
-      # Policy Change
-      auditpol /set /subcategory:"Audit Policy Change" /success:enable /failure:enable
-
-      Write-Output "Audit policies configured"
-  tags: [security, audit]
-
-- name: Enable command line logging in process creation events
+# =============================================================================
+# V-WS-004: Disable UAC
+# =============================================================================
+- name: "VULN V-WS-004: Disable UAC"
   ansible.windows.win_regedit:
-    path: HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Audit
-    name: ProcessCreationIncludeCmdLine_Enabled
+    path: HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System
+    name: EnableLUA
+    data: 0
+    type: dword
+  tags: [vulnerability, uac]
+
+- name: "VULN V-WS-004: Set UAC to never notify"
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System
+    name: ConsentPromptBehaviorAdmin
+    data: 0
+    type: dword
+  tags: [vulnerability, uac]
+
+# =============================================================================
+# V-WS-005: Enable SMBv1
+# =============================================================================
+- name: "VULN V-WS-005: Enable SMBv1 protocol"
+  ansible.windows.win_powershell:
+    script: |
+      Enable-WindowsOptionalFeature -Online -FeatureName SMB1Protocol -NoRestart
+      Set-SmbServerConfiguration -EnableSMB1Protocol $true -Force
+      Write-Output "SMBv1 enabled"
+  ignore_errors: true
+  tags: [vulnerability, smb]
+
+# =============================================================================
+# V-WS-006: Create Local Admin with Weak Password
+# =============================================================================
+- name: "VULN V-WS-006: Create vulnerable local admin account"
+  ansible.windows.win_powershell:
+    script: |
+      $password = ConvertTo-SecureString "admin" -AsPlainText -Force
+
+      # Check if user exists
+      $user = Get-LocalUser -Name "backdoor" -ErrorAction SilentlyContinue
+
+      if (-not $user) {
+          New-LocalUser -Name "backdoor" -Password $password -PasswordNeverExpires -Description "System maintenance account"
+          Add-LocalGroupMember -Group "Administrators" -Member "backdoor"
+          Write-Output "Created vulnerable admin account: backdoor"
+      }
+      else {
+          Write-Output "Account already exists"
+      }
+  ignore_errors: true
+  tags: [vulnerability, accounts]
+
+- name: "VULN V-WS-006: Create another weak account"
+  ansible.windows.win_powershell:
+    script: |
+      $password = ConvertTo-SecureString "support" -AsPlainText -Force
+
+      $user = Get-LocalUser -Name "support" -ErrorAction SilentlyContinue
+
+      if (-not $user) {
+          New-LocalUser -Name "support" -Password $password -PasswordNeverExpires -Description "IT Support Account"
+          Add-LocalGroupMember -Group "Administrators" -Member "support"
+          Write-Output "Created vulnerable support account"
+      }
+  ignore_errors: true
+  tags: [vulnerability, accounts]
+
+# =============================================================================
+# V-WS-007: Enable AutoRun
+# =============================================================================
+- name: "VULN V-WS-007: Enable AutoRun for all drives"
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer
+    name: NoDriveTypeAutoRun
+    data: 0
+    type: dword
+  tags: [vulnerability, autorun]
+
+- name: "VULN V-WS-007: Enable AutoPlay"
+  ansible.windows.win_regedit:
+    path: HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\AutoplayHandlers
+    name: DisableAutoplay
+    data: 0
+    type: dword
+  ignore_errors: true
+  tags: [vulnerability, autorun]
+
+# =============================================================================
+# V-WS-008: Enable Remote Desktop with Weak Settings
+# =============================================================================
+- name: "VULN V-WS-008: Enable Remote Desktop"
+  ansible.windows.win_regedit:
+    path: HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server
+    name: fDenyTSConnections
+    data: 0
+    type: dword
+  tags: [vulnerability, rdp]
+
+- name: "VULN V-WS-008: Disable NLA requirement for RDP"
+  ansible.windows.win_regedit:
+    path: HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp
+    name: UserAuthentication
+    data: 0
+    type: dword
+  tags: [vulnerability, rdp]
+
+- name: "VULN V-WS-008: Set weak RDP encryption"
+  ansible.windows.win_regedit:
+    path: HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp
+    name: MinEncryptionLevel
     data: 1
     type: dword
-  tags: [security, audit]
+  tags: [vulnerability, rdp]
 
-- name: Enable PowerShell Script Block Logging
+# =============================================================================
+# V-WS-010: Disable PowerShell Logging
+# =============================================================================
+- name: "VULN V-WS-010: Disable PowerShell Script Block Logging"
   ansible.windows.win_regedit:
     path: HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging
     name: EnableScriptBlockLogging
-    data: 1
+    data: 0
     type: dword
-  tags: [security, audit]
+  tags: [vulnerability, logging]
+
+- name: "VULN V-WS-010: Disable PowerShell Module Logging"
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ModuleLogging
+    name: EnableModuleLogging
+    data: 0
+    type: dword
+  tags: [vulnerability, logging]
+
+- name: "VULN V-WS-010: Set unrestricted PowerShell execution policy"
+  ansible.windows.win_powershell:
+    script: |
+      Set-ExecutionPolicy Unrestricted -Force -Scope LocalMachine
+      Write-Output "PowerShell execution policy set to Unrestricted"
+  ignore_errors: true
+  tags: [vulnerability, powershell]
 
 # =============================================================================
-# Event Log Configuration
+# V-WS-012: Enable Unnecessary Services
 # =============================================================================
-- name: Increase Security Event Log Size
-  community.windows.win_eventlog:
-    name: Security
-    maximum_size: 512MB
-    retention_days: 30
-  tags: [logging]
+- name: "VULN V-WS-012: Enable Remote Registry service"
+  ansible.windows.win_service:
+    name: RemoteRegistry
+    start_mode: auto
+    state: started
+  ignore_errors: true
+  tags: [vulnerability, services]
 
-- name: Increase System Event Log Size
-  community.windows.win_eventlog:
-    name: System
-    maximum_size: 128MB
-    retention_days: 30
-  tags: [logging]
-
-- name: Increase Application Event Log Size
-  community.windows.win_eventlog:
-    name: Application
-    maximum_size: 128MB
-    retention_days: 30
-  tags: [logging]
+- name: "VULN V-WS-012: Enable Telnet Client"
+  ansible.windows.win_powershell:
+    script: |
+      Enable-WindowsOptionalFeature -Online -FeatureName TelnetClient -NoRestart
+      Write-Output "Telnet client enabled"
+  ignore_errors: true
+  tags: [vulnerability, services]
 
 # =============================================================================
-# Network Drive Mapping (via Group Policy Preferences simulation)
+# V-WS-013: Disable Screen Lock
 # =============================================================================
-- name: Create network drive mapping script
+- name: "VULN V-WS-013: Disable screen saver password"
+  ansible.windows.win_regedit:
+    path: HKCU:\Control Panel\Desktop
+    name: ScreenSaverIsSecure
+    data: "0"
+    type: string
+  ignore_errors: true
+  tags: [vulnerability, screenlock]
+
+- name: "VULN V-WS-013: Set long screen timeout"
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System
+    name: InactivityTimeoutSecs
+    data: 0
+    type: dword
+  tags: [vulnerability, screenlock]
+
+# =============================================================================
+# V-WS-014: Create Sensitive Files on Desktop
+# =============================================================================
+- name: "VULN V-WS-014: Create passwords file on public desktop"
   ansible.windows.win_copy:
     content: |
-      # Network Drive Mapping Script
-      # Runs at user logon to map network drives
+      Personal Password List
+      ======================
 
-      # Map S: drive to shared files
-      $sharePath = "\\{{ network_drives[0].path | default('\\\\DC01\\SharedFiles') | regex_replace('\\\\\\\\', '\\') }}"
-      $driveLetter = "{{ network_drives[0].letter | default('S') }}:"
+      Email: jsmith@gmail.com / Summer2024!
+      Bank: john.smith / BankPass123
+      VPN: jsmith / VPNAccess2024
+      Work: BLUE\jsmith / JSmith2024!
 
-      # Remove existing mapping if present
-      if (Test-Path $driveLetter) {
-          Remove-PSDrive -Name "{{ network_drives[0].letter | default('S') }}" -Force -ErrorAction SilentlyContinue
-          net use $driveLetter /delete /y 2>$null
-      }
+      WiFi: HomeNetwork / WiFi123456
 
-      # Create new mapping
-      try {
-          net use $driveLetter $sharePath /persistent:yes
-          Write-Output "Successfully mapped $driveLetter to $sharePath"
-      }
-      catch {
-          Write-Output "Failed to map drive: $($_.Exception.Message)"
-      }
-    dest: C:\Scripts\MapDrives.ps1
-  when: network_drives is defined and network_drives | length > 0
-  tags: [network]
+      Credit Card PIN: 1234
 
+      Note: Change these eventually!
+    dest: C:\Users\Public\Desktop\passwords.txt
+  ignore_errors: true
+  tags: [vulnerability, data]
+
+- name: "VULN V-WS-014: Create network info file"
+  ansible.windows.win_copy:
+    content: |
+      IT Department Quick Reference
+      =============================
+
+      Domain Controller: DC01.blue.lab (10.X.10.10)
+      File Server: \\DC01\SharedFiles
+      Web Server: http://intranet.blue.lab
+
+      Admin Credentials:
+      - Domain Admin: itmgr / ITManager2024!
+      - Local Admin: Administrator / CCDCAdmin2024!
+      - Backup Account: svc_backup / admin
+
+      VPN Server: vpn.blue.lab
+      WiFi Password: CorpWiFi2024!
+    dest: C:\Users\Public\Desktop\IT_Info.txt
+  ignore_errors: true
+  tags: [vulnerability, data]
+
+# =============================================================================
+# Reduce Event Log Sizes
+# =============================================================================
+- name: "VULN: Minimize Security Event Log Size"
+  community.windows.win_eventlog:
+    name: Security
+    maximum_size: 1MB
+    retention_days: 1
+  tags: [vulnerability, logging]
+
+- name: "VULN: Minimize System Event Log Size"
+  community.windows.win_eventlog:
+    name: System
+    maximum_size: 1MB
+    retention_days: 1
+  tags: [vulnerability, logging]
+
+# =============================================================================
+# Create Network Drive Mapping
+# =============================================================================
 - name: Create Scripts directory
   ansible.windows.win_file:
     path: C:\Scripts
     state: directory
   tags: [network]
 
-- name: Create scheduled task for drive mapping at logon
-  ansible.windows.win_powershell:
-    script: |
-      $taskName = "MapNetworkDrives"
-      $scriptPath = "C:\Scripts\MapDrives.ps1"
-
-      # Check if task exists
-      $existingTask = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
-
-      if (-not $existingTask) {
-          $action = New-ScheduledTaskAction -Execute "PowerShell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`""
-          $trigger = New-ScheduledTaskTrigger -AtLogOn
-          $principal = New-ScheduledTaskPrincipal -GroupId "Users" -RunLevel Limited
-          $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
-
-          Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Description "Map network drives at logon"
-          Write-Output "Created scheduled task: $taskName"
-      }
-      else {
-          Write-Output "Scheduled task already exists: $taskName"
-      }
-  when: network_drives is defined and network_drives | length > 0
+- name: Create network drive mapping script
+  ansible.windows.win_copy:
+    content: |
+      # Network Drive Mapping Script
+      net use S: \\DC01\SharedFiles /persistent:yes 2>$null
+      Write-Output "Drive mapped"
+    dest: C:\Scripts\MapDrives.ps1
   tags: [network]
 
 # =============================================================================
-# Browser Installation
+# Create Suspicious Scheduled Task
 # =============================================================================
-- name: Install Google Chrome
+- name: "VULN: Create suspicious scheduled task"
   ansible.windows.win_powershell:
     script: |
-      $chromeInstaller = "C:\Temp\ChromeSetup.exe"
+      $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -WindowStyle Hidden -Command `"Get-Process | Out-File C:\Windows\Temp\procs.txt; ipconfig /all >> C:\Windows\Temp\procs.txt`""
+      $trigger = New-ScheduledTaskTrigger -Daily -At "2:00AM"
+      $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
 
-      # Create temp directory
-      New-Item -ItemType Directory -Path "C:\Temp" -Force | Out-Null
-
-      # Download Chrome installer
-      try {
-          $webClient = New-Object System.Net.WebClient
-          $webClient.DownloadFile("https://dl.google.com/chrome/install/latest/chrome_installer.exe", $chromeInstaller)
-
-          # Install Chrome silently
-          Start-Process -FilePath $chromeInstaller -ArgumentList "/silent", "/install" -Wait
-          Write-Output "Google Chrome installed successfully"
-      }
-      catch {
-          Write-Output "Failed to install Chrome: $($_.Exception.Message)"
-      }
-      finally {
-          # Cleanup
-          if (Test-Path $chromeInstaller) {
-              Remove-Item $chromeInstaller -Force
-          }
-      }
-  when: install_browser | default(true)
+      Register-ScheduledTask -TaskName "WindowsHealthMonitor" -Action $action -Trigger $trigger -Principal $principal -Description "Windows system health monitoring" -Force
+      Write-Output "Created scheduled task"
   ignore_errors: true
-  tags: [software]
+  tags: [vulnerability, persistence]
 
 # =============================================================================
-# Sysmon Installation (for security monitoring)
-# =============================================================================
-- name: Download Sysmon
-  ansible.windows.win_powershell:
-    script: |
-      $sysmonZip = "C:\Temp\Sysmon.zip"
-      $sysmonDir = "C:\Program Files\Sysmon"
-
-      # Create directories
-      New-Item -ItemType Directory -Path "C:\Temp" -Force | Out-Null
-      New-Item -ItemType Directory -Path $sysmonDir -Force | Out-Null
-
-      # Download Sysmon
-      try {
-          $webClient = New-Object System.Net.WebClient
-          $webClient.DownloadFile("https://download.sysinternals.com/files/Sysmon.zip", $sysmonZip)
-
-          # Extract
-          Expand-Archive -Path $sysmonZip -DestinationPath $sysmonDir -Force
-          Write-Output "Sysmon downloaded and extracted"
-      }
-      catch {
-          Write-Output "Failed to download Sysmon: $($_.Exception.Message)"
-      }
-  ignore_errors: true
-  tags: [security, sysmon]
-
-- name: Create Sysmon configuration
-  ansible.windows.win_copy:
-    content: |
-      <Sysmon schemaversion="4.90">
-        <HashAlgorithms>md5,sha256,IMPHASH</HashAlgorithms>
-        <EventFiltering>
-          <!-- Process Creation -->
-          <RuleGroup name="ProcessCreate" groupRelation="or">
-            <ProcessCreate onmatch="include">
-              <Image condition="end with">cmd.exe</Image>
-              <Image condition="end with">powershell.exe</Image>
-              <Image condition="end with">wscript.exe</Image>
-              <Image condition="end with">cscript.exe</Image>
-              <Image condition="end with">mshta.exe</Image>
-              <Image condition="end with">regsvr32.exe</Image>
-              <Image condition="end with">rundll32.exe</Image>
-            </ProcessCreate>
-          </RuleGroup>
-
-          <!-- Network Connections -->
-          <RuleGroup name="NetworkConnect" groupRelation="or">
-            <NetworkConnect onmatch="include">
-              <DestinationPort condition="is">445</DestinationPort>
-              <DestinationPort condition="is">3389</DestinationPort>
-              <DestinationPort condition="is">5985</DestinationPort>
-              <DestinationPort condition="is">5986</DestinationPort>
-            </NetworkConnect>
-          </RuleGroup>
-
-          <!-- File Creation -->
-          <RuleGroup name="FileCreate" groupRelation="or">
-            <FileCreate onmatch="include">
-              <TargetFilename condition="end with">.exe</TargetFilename>
-              <TargetFilename condition="end with">.dll</TargetFilename>
-              <TargetFilename condition="end with">.ps1</TargetFilename>
-              <TargetFilename condition="end with">.bat</TargetFilename>
-              <TargetFilename condition="end with">.cmd</TargetFilename>
-            </FileCreate>
-          </RuleGroup>
-
-          <!-- Registry Events -->
-          <RuleGroup name="RegistryEvent" groupRelation="or">
-            <RegistryEvent onmatch="include">
-              <TargetObject condition="contains">Run</TargetObject>
-              <TargetObject condition="contains">RunOnce</TargetObject>
-            </RegistryEvent>
-          </RuleGroup>
-        </EventFiltering>
-      </Sysmon>
-    dest: "C:\\Program Files\\Sysmon\\sysmon-config.xml"
-  ignore_errors: true
-  tags: [security, sysmon]
-
-- name: Install and configure Sysmon
-  ansible.windows.win_powershell:
-    script: |
-      $sysmon64 = "C:\Program Files\Sysmon\Sysmon64.exe"
-      $sysmonConfig = "C:\Program Files\Sysmon\sysmon-config.xml"
-
-      if (Test-Path $sysmon64) {
-          # Check if Sysmon is already installed
-          $sysmonService = Get-Service -Name Sysmon64 -ErrorAction SilentlyContinue
-
-          if (-not $sysmonService) {
-              # Install Sysmon
-              & $sysmon64 -accepteula -i $sysmonConfig
-              Write-Output "Sysmon installed and configured"
-          }
-          else {
-              # Update configuration
-              & $sysmon64 -c $sysmonConfig
-              Write-Output "Sysmon configuration updated"
-          }
-      }
-      else {
-          Write-Output "Sysmon executable not found"
-      }
-  ignore_errors: true
-  tags: [security, sysmon]
-
-# =============================================================================
-# Desktop Shortcuts and User Environment
+# Create Desktop Shortcuts
 # =============================================================================
 - name: Create Public Desktop shortcuts
   ansible.windows.win_shortcut:
     src: "{{ item.target }}"
     dest: "C:\\Users\\Public\\Desktop\\{{ item.name }}.lnk"
     description: "{{ item.description }}"
-    icon: "{{ item.icon | default(item.target + ',0') }}"
   loop:
     - name: "Shared Files"
       target: "\\\\DC01\\SharedFiles"
       description: "Corporate File Share"
-      icon: "shell32.dll,3"
     - name: "Company Intranet"
-      target: "https://intranet.blue.lab"
+      target: "http://intranet.blue.lab"
       description: "Blue Team Industries Intranet"
-      icon: "shell32.dll,13"
   ignore_errors: true
   tags: [desktop]
 
-# =============================================================================
-# Windows Update Configuration
-# =============================================================================
-- name: Configure Windows Update for security updates
-  ansible.windows.win_regedit:
-    path: HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU
-    name: "{{ item.name }}"
-    data: "{{ item.value }}"
-    type: dword
-  loop:
-    - { name: 'NoAutoUpdate', value: 0 }           # Enable automatic updates
-    - { name: 'AUOptions', value: 3 }              # Download and notify for install
-    - { name: 'ScheduledInstallDay', value: 0 }    # Every day
-    - { name: 'ScheduledInstallTime', value: 3 }   # 3 AM
-  tags: [updates]
-
-# =============================================================================
-# Time Synchronization
-# =============================================================================
-- name: Configure NTP to use domain controller
-  ansible.windows.win_powershell:
-    script: |
-      # Configure Windows Time Service to sync with DC
-      w32tm /config /syncfromflags:domhier /update
-      Restart-Service w32time
-      w32tm /resync /nowait
-      Write-Output "Time synchronization configured"
-  ignore_errors: true
-  tags: [ntp]
-
-# =============================================================================
-# Final Configuration
-# =============================================================================
-- name: Set workstation description
-  ansible.windows.win_powershell:
-    script: |
-      $description = "CCDC Training Workstation - {{ org_name | default('Blue Team Industries') }}"
-      $computer = Get-WmiObject Win32_OperatingSystem
-      $computer.Description = $description
-      $computer.Put() | Out-Null
-      Write-Output "Computer description set"
-  ignore_errors: true
-  tags: [config]
-
 - name: Display completion message
   ansible.builtin.debug:
-    msg: |
-      Workstation configuration completed on {{ inventory_hostname }}
-      Domain: {{ domain_name | default('blue.lab') }}
-      Network Drive: S: -> \\DC01\SharedFiles
+    msg: "VULNERABLE Workstation configuration completed on {{ inventory_hostname }}"

