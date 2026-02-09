@@ -153,26 +153,38 @@ network:
     # Allow DNS queries to DC
     - name: "Allow DNS to DC"
       vlan_src: 10
+      vlan_dst: 10
       ip_last_octet_dst: 10
       protocol: udp
-      ports: 53
+      ports: "53"
       action: ACCEPT
 
-    # Allow web traffic to web server
-    - name: "Allow HTTP/HTTPS to web server"
+    # Allow HTTP traffic to web server
+    - name: "Allow HTTP to web server"
       vlan_src: 10
+      vlan_dst: 10
       ip_last_octet_dst: 20
       protocol: tcp
-      ports: 80,443
+      ports: "80"
+      action: ACCEPT
+
+    # Allow HTTPS traffic to web server
+    - name: "Allow HTTPS to web server"
+      vlan_src: 10
+      vlan_dst: 10
+      ip_last_octet_dst: 20
+      protocol: tcp
+      ports: "443"
       action: ACCEPT
 
     # Allow database connections from web server only
     - name: "Allow MySQL from web server to DB"
       vlan_src: 10
+      vlan_dst: 10
       ip_last_octet_src: 20
       ip_last_octet_dst: 30
       protocol: tcp
-      ports: 3306
+      ports: "3306"
       action: ACCEPT
 
 # =============================================================================
@@ -183,9 +195,13 @@ defaults:
   snapshot_with_RAM: true
   stale_hours: 0
 
+  # Dynamic wallpaper setting
+  enable_dynamic_wallpaper: false
+
   # Active Directory configuration
-  ad_domain_functional_level: "Win2016"
-  ad_forest_functional_level: "Win2016"
+  # Valid values: Win2003, Win2008, Win2008R2, Win2012, Win2012R2, WinThreshold, Win2025
+  ad_domain_functional_level: "WinThreshold"
+  ad_forest_functional_level: "WinThreshold"
 
   # Domain Administrator account
   ad_domain_admin: "Administrator"
